@@ -251,15 +251,6 @@ impl Board {
     }
 
     pub const fn get_bitboard(&self, piece_type: PieceType, is_white: bool) -> u64 {
-        // 4 bits | 2 ^ 4 = 16 possible states
-        // 12 are valid
-        //                -> +6 (0110)
-        // king   w : 0000 | b : 0110
-        // queen  w : 0001 | b : 0111
-        // rook   w : 0010 | b : 1000
-        // bishop w : 0011 | b : 1001
-        // knight w : 0100 | b : 1010
-        // pawn   w : 0101 | b : 1011
         self.bit_boards[convert_piece_to_index(piece_type, is_white)]
     }
 
@@ -279,6 +270,15 @@ impl Board {
 }
 
 pub const fn convert_piece_to_index(piece_type: PieceType, is_white: bool) -> usize {
+    // 4 bits | 2 ^ 4 = 16 possible states
+    // 12 are valid
+    //                -> +6 (0110)
+    // king   w : 0000 | b : 0110
+    // queen  w : 0001 | b : 0111
+    // rook   w : 0010 | b : 1000
+    // bishop w : 0011 | b : 1001
+    // knight w : 0100 | b : 1010
+    // pawn   w : 0101 | b : 1011
     piece_type as usize + !is_white as usize * 6
 }
 

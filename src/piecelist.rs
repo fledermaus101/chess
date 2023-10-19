@@ -1,7 +1,7 @@
 use std::{
     iter::FusedIterator,
     mem::MaybeUninit,
-    ops::{Deref, DerefMut, Index},
+    ops::{Deref, DerefMut},
 };
 
 use crate::{Piece, PieceType, Square};
@@ -176,16 +176,9 @@ impl Iterator for PieceListIterator {
             square: sq,
         })
     }
+
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.internal_list_iterator.size_hint()
-    }
-}
-
-impl Index<usize> for PieceList {
-    type Output = Square;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.internal_list[index]
     }
 }
 

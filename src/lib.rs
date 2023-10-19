@@ -1,4 +1,10 @@
-use std::{fmt::Display, iter::FusedIterator, num::ParseIntError, ops::Index};
+#![feature(maybe_uninit_uninit_array)]
+#![feature(const_maybe_uninit_uninit_array)]
+#![feature(maybe_uninit_slice)]
+mod piecelist;
+
+use crate::piecelist::{InternalPieceList, PieceList};
+use std::{fmt::Display, num::ParseIntError};
 
 use bevy::prelude::{Component, Resource};
 use thiserror::Error;
@@ -16,146 +22,6 @@ pub struct Board {
     castling_white_queenside: bool,
     castling_black_kingside: bool,
     castling_black_queenside: bool,
-}
-
-const PIECE_LIST_SIZE: usize = 10;
-
-#[allow(unused)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct InternalPieceList {
-    list: [Square; PIECE_LIST_SIZE],
-    size: usize,
-}
-
-impl InternalPieceList {
-    const fn as_piece_list(self, piece_type: PieceType, is_white: bool) -> PieceList {
-        PieceList {
-            internal_list: self,
-            piece_type,
-            is_white,
-        }
-    }
-
-    fn add(&mut self, sq: Square) {
-        if self.list[..self.size].iter().any(|x| x == &sq) {
-            return;
-        }
-        assert!(self.size != PIECE_LIST_SIZE);
-        self.size += 1;
-        self.list[self.size - 1] = sq;
-    }
-
-    fn remove(&mut self, square_to_be_removed: Square) {
-        if let Some(position_to_be_removed) =
-            self.list.iter().position(|sq| sq == &square_to_be_removed)
-        {
-            if self.size != 1 {
-                self.list.swap(position_to_be_removed, self.size - 1);
-            }
-            self.size -= 1;
-        }
-    }
-}
-
-impl IntoIterator for InternalPieceList {
-    type Item = Square;
-
-    type IntoIter = InternalPieceListIterator;
-
-    fn into_iter(self) -> Self::IntoIter {
-        InternalPieceListIterator {
-            position: 0,
-            list: self,
-        }
-    }
-}
-
-pub struct InternalPieceListIterator {
-    position: usize,
-    list: InternalPieceList,
-}
-
-impl ExactSizeIterator for InternalPieceListIterator {}
-impl FusedIterator for InternalPieceListIterator {}
-
-impl Iterator for InternalPieceListIterator {
-    type Item = Square;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.list.size <= self.position {
-            return None;
-        }
-        let val = self.list[self.position];
-        self.position += 1;
-        Some(val)
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.list.size, Some(self.list.size))
-    }
-}
-
-impl Index<usize> for InternalPieceList {
-    type Output = Square;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        assert!(index < self.size);
-        &self.list[index]
-    }
-}
-
-#[allow(unused)]
-#[derive(Debug, Clone, Copy)]
-pub struct PieceList {
-    internal_list: InternalPieceList,
-    piece_type: PieceType,
-    is_white: bool,
-}
-
-impl IntoIterator for PieceList {
-    type Item = Piece;
-
-    type IntoIter = PieceListIterator;
-
-    fn into_iter(self) -> Self::IntoIter {
-        PieceListIterator {
-            piece_type: self.piece_type,
-            is_white: self.is_white,
-            internal_list_iterator: self.internal_list.into_iter(),
-        }
-    }
-}
-
-pub struct PieceListIterator {
-    piece_type: PieceType,
-    is_white: bool,
-    internal_list_iterator: InternalPieceListIterator,
-}
-
-impl ExactSizeIterator for PieceListIterator {}
-impl FusedIterator for PieceListIterator {}
-
-impl Iterator for PieceListIterator {
-    type Item = Piece;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.internal_list_iterator.next().map(|sq| Piece {
-            piece_type: self.piece_type,
-            is_white: self.is_white,
-            square: sq,
-        })
-    }
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.internal_list_iterator.size_hint()
-    }
-}
-
-impl Index<usize> for PieceList {
-    type Output = Square;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.internal_list[index]
-    }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Hash)]
@@ -297,10 +163,7 @@ impl Default for Board {
     fn default() -> Self {
         Self {
             bit_boards: [0; 12],
-            piece_lists: [InternalPieceList {
-                list: [Square::from_square(0); PIECE_LIST_SIZE],
-                size: 0,
-            }; 12],
+            piece_lists: [InternalPieceList::new(); 12],
             side_to_move: true,
             half_moves: 0,
             full_moves: 0,
@@ -604,25 +467,6 @@ mod tests {
             right: {:064b}",
             bitboard_king_white, 1
         );
-    }
-
-    #[test]
-    fn piece_list_add_3_remove_1() {
-        let mut piece_list = InternalPieceList {
-            list: [Square::from_square(0); 10],
-            size: 0,
-        };
-        piece_list.add(Square::from_lateral(2, 3)); // c4
-        piece_list.add(Square::from_lateral(1, 3)); // b4
-        piece_list.add(Square::from_lateral(3, 3)); // d4
-
-        assert_eq!(piece_list[0], Square::from_lateral(2, 3));
-        assert_eq!(piece_list[1], Square::from_lateral(1, 3));
-        assert_eq!(piece_list[2], Square::from_lateral(3, 3));
-
-        piece_list.remove(Square::from_lateral(1, 3));
-        assert_eq!(piece_list[0], Square::from_lateral(2, 3));
-        assert_eq!(piece_list[1], Square::from_lateral(3, 3));
     }
 
     #[test]

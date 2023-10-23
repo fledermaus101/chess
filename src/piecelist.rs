@@ -58,6 +58,10 @@ impl InternalPieceList {
             false
         }
     }
+
+    pub(crate) fn contains(&self, sq: Square) -> bool {
+        self[..].iter().any(|x| x == &sq)
+    }
 }
 
 impl Deref for InternalPieceList {
@@ -141,6 +145,32 @@ pub struct PieceList {
     internal_list: InternalPieceList,
     piece_type: PieceType,
     is_white: bool,
+}
+
+impl PieceList {
+    pub fn len(&self) -> usize {
+        self.internal_list.size
+    }
+
+    /// Checks if this piecelist contains a piece with this specific square
+    pub fn contains_square(&self, sq: Square) -> bool {
+        self.internal_list.contains(sq)
+    }
+
+    /// Checks if this piecelist contains a piece
+    pub fn contains(&self, other_piece: Piece) -> bool {
+        self.piece_type() == other_piece.piece_type()
+            && self.is_white() == other_piece.is_white()
+            && self.contains_square(other_piece.square())
+    }
+
+    pub fn piece_type(&self) -> PieceType {
+        self.piece_type
+    }
+
+    pub fn is_white(&self) -> bool {
+        self.is_white
+    }
 }
 
 impl IntoIterator for PieceList {
@@ -245,5 +275,25 @@ mod tests {
         assert_eq!(iter.next_back(), Some(Square::from_square(2)));
         assert_eq!(iter.next(), None);
         assert_eq!(iter.next_back(), None);
+    }
+
+    #[test]
+    fn piecelist_contains() {
+        let mut piecelist_internal = InternalPieceList::new();
+        for i in 0..=3 {
+            piecelist_internal.add(Square::from_square(i as u8));
+        }
+
+        assert!(piecelist_internal.contains(Square::from_square(2)));
+        assert!(!piecelist_internal.contains(Square::from_square(9)));
+
+        let piecelist = piecelist_internal.as_piece_list(PieceType::Pawn, false);
+        assert!(piecelist.contains(Piece::new(Square::from_square(1), PieceType::Pawn, false)));
+        assert!(!piecelist.contains(Piece::new(Square::from_square(1), PieceType::Pawn, true)));
+        assert!(!piecelist.contains(Piece::new(Square::from_square(1), PieceType::Queen, false)));
+        assert!(!piecelist.contains(Piece::new(Square::from_square(8), PieceType::Pawn, false)));
+
+        assert!(piecelist.contains_square(Square::from_square(2)));
+        assert!(!piecelist.contains_square(Square::from_square(9)));
     }
 }

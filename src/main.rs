@@ -1,3 +1,5 @@
+use std::mem;
+
 use bevy::{prelude::*, window::PrimaryWindow};
 use chess::*;
 
@@ -118,7 +120,6 @@ struct Dragged;
 #[derive(Component)]
 struct Hovered;
 
-#[allow(unused)]
 fn hover(
     mut commands: Commands,
     q_piece: Query<(Entity, &Transform, &Piece), Without<Dragged>>,
@@ -130,8 +131,7 @@ fn hover(
             let size = PIECE_SIZE * PIECE_SCALE;
             let half_length = size / 2.0;
 
-            let cursor_x = cursor_position.x - q_windows.width() / 2.0;
-            let cursor_y = q_windows.height() / 2.0 - cursor_position.y;
+            let [cursor_x, cursor_y] = get_cursor_position(cursor_position, q_windows).to_array();
 
             if transform.translation.x - half_length < cursor_x
                 && transform.translation.x + half_length > cursor_x
@@ -188,13 +188,13 @@ fn on_left_release(
                     .expect("Every square should exist.");
 
                 let p = &Piece::new(board_tile.0, piece.piece_type(), piece.is_white());
-                let _ = std::mem::replace(&mut piece, p);
+                let _ = mem::replace(&mut piece, p);
             }
         }
     }
 }
 
-fn cursor_position(cursor_position: Vec2, window: &Window) -> Vec2 {
+fn get_cursor_position(cursor_position: Vec2, window: &Window) -> Vec2 {
     Vec2 {
         x: cursor_position.x - window.width() / 2.0,
         y: window.height() / 2.0 - cursor_position.y,
@@ -208,11 +208,8 @@ fn drag(
     let q_windows = q_windows.single();
     if let Some(mut transform) = q_dragged_pieces.iter_mut().next() {
         if let Some(cursor_position) = q_windows.cursor_position() {
-            transform.translation = Vec3::new(
-                cursor_position.x - q_windows.width() / 2.0,
-                q_windows.height() / 2.0 - cursor_position.y,
-                1.0,
-            );
+            get_cursor_position(cursor_position, q_windows).extend(1.0);
+            transform.translation = get_cursor_position(cursor_position, q_windows).extend(1.0);
         }
     }
 }

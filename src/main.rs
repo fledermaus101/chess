@@ -18,7 +18,7 @@ fn main() {
         .add_systems(Startup, create_board)
         .add_systems(Startup, load_pieces)
         .add_systems(Update, on_left_press)
-        .add_systems(Update, on_right_press)
+        .add_systems(Update, on_left_release)
         .add_systems(Update, hover)
         .add_systems(Update, drag)
         .add_systems(Update, on_drag)
@@ -73,7 +73,7 @@ fn load_pieces(
         None,
     );
     let atlas_handle = texture_atlases.add(atlas);
-    for piece in board.get_piecelists().into_iter().flatten() {
+    for piece in board.get_all_pieces() {
         commands.spawn(create_piece_bundle(piece, atlas_handle.clone()));
     }
 
@@ -160,16 +160,44 @@ fn on_left_press(
     }
 }
 
-fn on_right_press(
+fn on_left_release(
     mut commands: Commands,
     buttons: Res<Input<MouseButton>>,
-    q_dragged_pieces: Query<(Entity, &Piece), With<Dragged>>,
+    mut q_dragged_pieces: Query<(Entity, &Piece), With<Dragged>>,
+    mut q_board_tiles: Query<(&mut Sprite, &BoardTile)>,
 ) {
     if buttons.just_released(MouseButton::Left) {
-        if let Some((entity, piece)) = q_dragged_pieces.iter().next() {
+        if let Some((entity, mut piece)) = q_dragged_pieces.iter_mut().next() {
             commands.entity(entity).remove::<Dragged>();
             println!("Undrag {}", piece);
+            {
+                // Reset hightlighted square
+                let (mut board_sprite, _) = q_board_tiles
+                    .iter_mut()
+                    .find(|(_, board_tile)| board_tile.0 == piece.square())
+                    .expect("Every square should exist.");
+                board_sprite.color.set_b(0.45);
+            }
+            {
+                // Set position of the piece
+                let (_, board_tile) = q_board_tiles
+                    .iter_mut()
+                    .find(|(_, board_tile)| {
+                        board_tile.0 == todo!("Find the square where the mouse is currently on")
+                    })
+                    .expect("Every square should exist.");
+
+                let p = &Piece::new(board_tile.0, piece.piece_type(), piece.is_white());
+                let _ = std::mem::replace(&mut piece, p);
+            }
         }
+    }
+}
+
+fn cursor_position(cursor_position: Vec2, window: &Window) -> Vec2 {
+    Vec2 {
+        x: cursor_position.x - window.width() / 2.0,
+        y: window.height() / 2.0 - cursor_position.y,
     }
 }
 
@@ -198,6 +226,6 @@ fn on_drag(
             .iter_mut()
             .find(|(_, board_tile)| board_tile.0 == dragged_piece.square())
             .expect("Every square should exist.");
-        board_sprite.color.set_b(200.0);
+        board_sprite.color.set_b(1.0);
     }
 }

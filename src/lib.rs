@@ -3,7 +3,7 @@
 #![feature(maybe_uninit_slice)]
 mod piecelist;
 
-use crate::piecelist::{InternalPieceList, PieceList};
+use crate::piecelist::SquareList;
 use std::{fmt::Display, num::ParseIntError};
 
 use bevy::prelude::{Component, Resource};
@@ -13,7 +13,7 @@ use thiserror::Error;
 #[derive(Clone, Copy, Resource)]
 pub struct Board {
     bit_boards: [u64; 12],
-    piece_lists: [InternalPieceList; PIECE_TYPE_VARIANTS.len() * 2],
+    squarelists: [SquareList; PIECE_TYPE_VARIANTS.len() * 2],
     side_to_move: bool,
     half_moves: u8, // should never be larger than 100, as that would be a draw
     full_moves: u32,
@@ -99,39 +99,41 @@ impl Board {
         let index = convert_piece_to_index(piece.piece_type(), piece.is_white());
         self.bit_boards[index] |= 1 << piece.square().0;
 
-        self.piece_lists[index].add(piece.square());
+        self.squarelists[index].add(piece.square());
     }
 
     fn clear_square_of_piece(&mut self, piece: Piece) {
         let index = convert_piece_to_index(piece.piece_type(), piece.is_white());
         self.bit_boards[index] &= !(1 << piece.square().0);
 
-        self.piece_lists[index].remove(piece.square());
+        self.squarelists[index].remove(piece.square());
     }
 
-    fn clear_square(&mut self, position: u8) {
+    fn clear_square(&mut self, square: Square) {
         for bit_board in self.bit_boards.iter_mut() {
-            *bit_board &= !(1 << position);
+            *bit_board &= !(1 << square.0);
         }
-        for internal_list in self.piece_lists.iter_mut() {}
+        for squarelist in self.squarelists.iter_mut() {
+            squarelist.remove(square);
+        }
     }
 
     pub const fn get_bitboard(&self, piece_type: PieceType, is_white: bool) -> u64 {
         self.bit_boards[convert_piece_to_index(piece_type, is_white)]
     }
 
-    pub const fn get_piecelist(&self, piece_type: PieceType, is_white: bool) -> PieceList {
-        self.piece_lists[convert_piece_to_index(piece_type, is_white)]
-            .as_piece_list(piece_type, is_white)
+    pub const fn get_piecelist(&self, piece_type: PieceType, is_white: bool) -> SquareList {
+        self.squarelists[convert_piece_to_index(piece_type, is_white)]
     }
 
-    pub fn get_piecelists(&self) -> [PieceList; PIECE_TYPE_VARIANTS.len() * 2] {
-        let mut index = 0;
-        self.piece_lists.map(|internal_list| {
-            let list = internal_list.as_piece_list(get_index_piece(index), get_index_color(index));
-            index += 1;
-            list
-        })
+    pub fn get_all_pieces(&self) -> Vec<Piece> {
+        self.squarelists
+            .into_iter()
+            .enumerate()
+            .flat_map(|(index, squarelist)| {
+                squarelist.into_iter_as_piece(get_index_piece(index), get_index_color(index))
+            })
+            .collect()
     }
 }
 
@@ -163,7 +165,7 @@ impl Default for Board {
     fn default() -> Self {
         Self {
             bit_boards: [0; 12],
-            piece_lists: [InternalPieceList::new(); 12],
+            squarelists: [SquareList::new(); 12],
             side_to_move: true,
             half_moves: 0,
             full_moves: 0,
@@ -428,7 +430,7 @@ mod tests {
         let mut board = Board::default();
         let piece = Piece::new(Square::from_lateral(5, 2), PieceType::Queen, true);
         board.set_square(piece);
-        board.clear_square(piece.square().0);
+        board.clear_square(piece.square());
         assert_eq!(0, board.get_bitboard(piece.piece_type(), piece.is_white()));
     }
 

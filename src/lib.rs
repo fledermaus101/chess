@@ -1,7 +1,8 @@
 #![feature(maybe_uninit_uninit_array)]
 #![feature(const_maybe_uninit_uninit_array)]
 #![feature(maybe_uninit_slice)]
-mod piecelist;
+#![feature(iter_collect_into)]
+pub mod piecelist;
 
 use crate::piecelist::SquareList;
 use std::{fmt::Display, num::ParseIntError};
@@ -9,7 +10,24 @@ use std::{fmt::Display, num::ParseIntError};
 use bevy::prelude::{Component, Resource};
 use thiserror::Error;
 
-#[allow(unused)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Move {
+    from: Square,
+    to: Square,
+    piece_type: PieceType,
+    is_white: bool,
+}
+
+impl Move {
+    pub fn piece(&self) -> Piece {
+        Piece {
+            square: self.to,
+            piece_type: self.piece_type,
+            is_white: self.is_white,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Resource)]
 pub struct Board {
     bit_boards: [u64; 12],
@@ -95,6 +113,89 @@ impl Square {
 
 #[allow(unused)]
 impl Board {
+    fn calculate_sliding(square: Square, offset_file: i8, offset_rank: i8) -> Vec<Square> {
+        let mut moves = Vec::new();
+        let mut file = square.file();
+        let mut rank = square.rank();
+        loop {
+            match file.checked_add_signed(offset_file) {
+                Some(f) if f <= 7 => file = f,
+                _ => break,
+            };
+            match rank.checked_add_signed(offset_rank) {
+                Some(r) if r <= 7 => rank = r,
+                _ => break,
+            }
+            moves.push(Square::from_lateral(file, rank));
+        }
+        moves
+    }
+
+    fn bishop_moves(&self, square: Square) -> Vec<Square> {
+        let mut moves = Vec::new();
+
+        moves.append(&mut Self::calculate_sliding(square, -1, -1)); // Down left
+        moves.append(&mut Self::calculate_sliding(square, 1, -1)); // Up left
+        moves.append(&mut Self::calculate_sliding(square, -1, 1)); // Down right
+        moves.append(&mut Self::calculate_sliding(square, 1, 1)); // Up right
+
+        moves
+    }
+
+    fn rook_moves(&self, square: Square) -> Vec<Square> {
+        let mut moves = Vec::new();
+
+        moves.append(&mut Self::calculate_sliding(square, 0, -1)); // Left
+        moves.append(&mut Self::calculate_sliding(square, 1, 0)); // Up
+        moves.append(&mut Self::calculate_sliding(square, 0, 1)); // Right
+        moves.append(&mut Self::calculate_sliding(square, -1, 0)); // Down
+
+        moves
+    }
+
+    fn knight_moves(&self, square: Square) -> Vec<Square> {
+        [
+            (1, -2),
+            (2, -1),
+            (2, 1),
+            (1, 2),
+            (-1, 2),
+            (-2, 1),
+            (-2, -1),
+            (-1, -2),
+        ]
+        .map(|(path_file, path_rank)| {
+            Square::from_lateral(
+                square.file().saturating_add_signed(path_file),
+                square.rank().saturating_add_signed(path_rank),
+            )
+        })
+        .to_vec()
+    }
+
+    fn get_legalmoves(&self) -> Vec<Move> {
+        for piece in self.get_all_pieces() {
+            let moves: Vec<Square> = match piece.piece_type() {
+                PieceType::King => todo!(),
+                PieceType::Queen => {
+                    let mut rook_moves = self.rook_moves(piece.square());
+                    rook_moves.append(&mut self.bishop_moves(piece.square()));
+                    rook_moves
+                }
+                PieceType::Rook => self.rook_moves(piece.square()),
+                PieceType::Bishop => self.bishop_moves(piece.square()),
+                PieceType::Knight => todo!(),
+                PieceType::Pawn => todo!(),
+            };
+        }
+        todo!()
+    }
+
+    fn make_move(&mut self, mv: Move) {
+        self.clear_square(mv.from);
+        self.set_square(mv.piece())
+    }
+
     fn set_square(&mut self, piece: Piece) {
         let index = convert_piece_to_index(piece.piece_type(), piece.is_white());
         self.bit_boards[index] |= 1 << piece.square().0;
@@ -499,5 +600,112 @@ mod tests {
     fn piece_at_a1() {
         let board: Board = "8/8/8/8/8/8/8/R7 w - - 0 1".try_into().unwrap();
         assert_eq!(board.get_bitboard(PieceType::Rook, true), 1);
+    }
+
+    #[test]
+    fn bishop_test() {
+        // Position: 4|2
+        // 0 0 0 0 0 0 0 0
+        // \ 0 0 0 0 0 0 0
+        // 0 \ 0 0 0 0 0 0
+        // 0 0 x 0 0 0 0 0
+        // 0 0 0 0 0 0 0 0
+        // 0 0 0 0 0 0 0 0
+        // 0 0 0 0 0 0 0 0
+        // 0 0 0 0 0 0 0 0
+        let mut moves = Board::default().bishop_moves(Square::from_lateral(4, 2));
+        moves.sort();
+
+        let mut correct: [Square; 11] = [
+            // top left
+            (6, 0),
+            (5, 1),
+            // right down
+            (3, 3),
+            (2, 4),
+            (1, 5),
+            (0, 6),
+            // left down
+            (3, 1),
+            (2, 0),
+            // right up
+            (5, 3),
+            (6, 4),
+            (7, 5),
+        ]
+        .map(|(file, rank)| Square::from_lateral(file, rank));
+        correct.sort();
+
+        assert_eq!(moves, correct);
+    }
+
+    #[test]
+    fn rook_test() {
+        // Position: 4|2
+        // 0 0 | 0 0 0 0 0
+        // 0 0 | 0 0 0 0 0
+        // 0 0 | 0 0 0 0 0
+        // - - x - - - - -
+        // 0 0 | 0 0 0 0 0
+        // 0 0 | 0 0 0 0 0
+        // 0 0 | 0 0 0 0 0
+        // 0 0 | 0 0 0 0 0
+        let mut moves = Board::default().rook_moves(Square::from_lateral(4, 2));
+        moves.sort();
+
+        let mut correct: [Square; 14] = [
+            // left
+            (4, 0),
+            (4, 1),
+            // right
+            (4, 3),
+            (4, 4),
+            (4, 5),
+            (4, 6),
+            (4, 7),
+            // down
+            (0, 2),
+            (1, 2),
+            (2, 2),
+            (3, 2),
+            // top
+            (5, 2),
+            (6, 2),
+            (7, 2),
+        ]
+        .map(|(file, rank)| Square::from_lateral(file, rank));
+        correct.sort();
+
+        assert_eq!(moves, correct);
+    }
+
+    #[test]
+    fn knight_test() {
+        // Position: 4|2
+        // 0 0 0 0 0 0 0 0
+        // 0 * 0 * 0 0 0 0
+        // * 0 0 0 * 0 0 0
+        // 0 0 x 0 0 0 0 0
+        // * 0 0 0 * 0 0 0
+        // 0 * 0 * 0 0 0 0
+        // 0 0 0 0 0 0 0 0
+        // 0 0 0 0 0 0 0 0
+        let mut moves = Board::default().knight_moves(Square::from_lateral(4, 2));
+        moves.sort();
+
+        let mut correct: [Square; 8] = [
+            (5, 0),
+            (6, 1),
+            (6, 3),
+            (5, 4),
+            (3, 4),
+            (2, 3),
+            (2, 1),
+            (3, 0),
+        ]
+        .map(|(file, rank)| Square::from_lateral(file, rank));
+        correct.sort();
+
+        assert_eq!(moves, correct);
     }
 }

@@ -1,6 +1,5 @@
 use std::{
     iter::FusedIterator,
-    mem::MaybeUninit,
     ops::{Deref, DerefMut},
 };
 
@@ -11,14 +10,14 @@ pub const PIECE_LIST_SIZE: usize = 10;
 /// Invariant: All elements up to `size` must be initialized
 #[derive(Debug, Clone, Copy)]
 pub struct SquareList {
-    list: [MaybeUninit<Square>; PIECE_LIST_SIZE],
+    list: [Square; PIECE_LIST_SIZE],
     size: usize,
 }
 
 impl SquareList {
     pub const fn new() -> SquareList {
         SquareList {
-            list: MaybeUninit::uninit_array(), // will be overwritten anyways
+            list: [Square::from_square(0); PIECE_LIST_SIZE],
             size: 0,
         }
     }
@@ -32,14 +31,13 @@ impl SquareList {
             "Tried to add a square to a InternalPieceList over the allowed defined maximum PIECE_LIST_SIZE ({PIECE_LIST_SIZE})"
         );
         self.size += 1;
-        self.list[self.size - 1].write(sq);
+        self.list[self.size - 1] = sq;
     }
 
     /// Removes a square from the list
     /// Returns a bool wether it was successful or not
     pub fn remove(&mut self, square_to_be_removed: Square) -> bool {
-        if let Some(position_to_be_removed) =
-            self[..].iter().position(|sq| sq == &square_to_be_removed)
+        if let Some(position_to_be_removed) = self.iter().position(|sq| sq == &square_to_be_removed)
         {
             self.list.swap(position_to_be_removed, self.size - 1);
             self.size -= 1;
@@ -50,7 +48,7 @@ impl SquareList {
     }
 
     pub fn contains(&self, sq: Square) -> bool {
-        self[..].iter().any(|x| x == &sq)
+        self.iter().any(|x| x == &sq)
     }
 
     pub const fn into_iter_as_piece(
@@ -72,15 +70,13 @@ impl Deref for SquareList {
     type Target = [Square];
 
     fn deref(&self) -> &Self::Target {
-        // SAFETY: All elements of the list up to self.size must always be initialized
-        unsafe { MaybeUninit::slice_assume_init_ref(&self.list[..self.size]) }
+        &self.list[..self.size]
     }
 }
 
 impl DerefMut for SquareList {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        // SAFETY: see impl Deref
-        unsafe { MaybeUninit::slice_assume_init_mut(&mut self.list[..self.size]) }
+        &mut self.list[..self.size]
     }
 }
 
@@ -97,7 +93,7 @@ pub struct PieceListIterator {
     r_index: usize,
     piece_type: PieceType,
     is_white: bool,
-    list: [MaybeUninit<Square>; PIECE_LIST_SIZE],
+    list: [Square; PIECE_LIST_SIZE],
 }
 
 impl ExactSizeIterator for PieceListIterator {}
@@ -113,7 +109,7 @@ impl Iterator for PieceListIterator {
         let val = self.list[self.l_index];
         self.l_index += 1;
         Some(Piece {
-            square: unsafe { val.assume_init() },
+            square: val,
             piece_type: self.piece_type,
             is_white: self.is_white,
         })
@@ -133,7 +129,7 @@ impl DoubleEndedIterator for PieceListIterator {
         self.r_index -= 1;
         let val = self.list[self.r_index];
         Some(Piece {
-            square: unsafe { val.assume_init() },
+            square: val,
             piece_type: self.piece_type,
             is_white: self.is_white,
         })
@@ -175,7 +171,7 @@ mod tests {
     fn piecelist_exactsizeiterator() {
         let piecelist = SquareList {
             // Can't use MaybeUninit::zeroed() because Square isn't repr(transparent)
-            list: [Square::from_square(0); PIECE_LIST_SIZE].map(MaybeUninit::new),
+            list: [Square::from_square(0); PIECE_LIST_SIZE],
             size: 3,
         };
 

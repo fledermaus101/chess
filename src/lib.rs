@@ -1,6 +1,3 @@
-#![feature(maybe_uninit_uninit_array)]
-#![feature(const_maybe_uninit_uninit_array)]
-#![feature(maybe_uninit_slice)]
 #![feature(iter_collect_into)]
 pub mod piecelist;
 

@@ -306,12 +306,17 @@ impl Board {
     fn pawn_moves(&self, square: Square) -> Vec<Square> {
         let mut pawn_moves = Vec::with_capacity(4);
         if [1, 6].contains(&square.rank()) {
+            // double push pawns
             pawn_moves.push(square.add_file(2 * self.side_multiplier()));
         }
         for offset in [-1, 1] {
+            // diagonal capture
             let square = square.add_rank(offset);
+            pawn_moves.push(square);
         }
-        pawn_moves.push(square.add_file(1));
+        // advance pawn by 1
+        pawn_moves.push(square.add_file(self.side_multiplier()));
+
         pawn_moves
     }
 

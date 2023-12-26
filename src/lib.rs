@@ -52,7 +52,7 @@ impl Add for Square {
 
     fn add(self, rhs: Self) -> Self::Output {
         Self::try_from_square(self.0 + rhs.0).expect(
-            "Square + Square was expected to be inside the chess board, but was over the maximum",
+            "(Square + Square) was expected to be inside the chess board, but was over the maximum",
         )
     }
 }
@@ -62,7 +62,7 @@ impl Add<(i8, i8)> for Square {
 
     fn add(self, rhs: (i8, i8)) -> Self::Output {
         self.try_add_tuple(rhs).expect(
-            "Square + tuple was expected to be inside the chess board, but was over the maximum",
+            "(Square + tuple) was expected to be inside the chess board, but was over the maximum",
         )
     }
 }
@@ -72,7 +72,7 @@ impl Sub for Square {
 
     fn sub(self, rhs: Self) -> Self::Output {
         Self::try_from_square(self.0 - rhs.0).expect(
-            "Square - Square was expected to be inside the chess board, but was under the minimum",
+            "(Square - Square) was expected to be inside the chess board, but was under the minimum",
         )
     }
 }
@@ -82,8 +82,8 @@ impl Sub<(i8, i8)> for Square {
 
     fn sub(self, rhs: (i8, i8)) -> Self::Output {
         let (file, rank) = rhs;
-        self.try_add_tuple(rhs)
-            .expect("Square - tuple was expected to be inside the chess board, but wasn't")
+        self.try_add_tuple((-file, -rank))
+            .expect("(Square - tuple) was expected to be inside the chess board, but wasn't")
     }
 }
 
@@ -249,7 +249,7 @@ impl Square {
 #[allow(unused)]
 impl Board {
     fn calculate_sliding(square: Square, offset_file: i8, offset_rank: i8) -> Vec<Square> {
-        let mut moves = Vec::new();
+        let mut moves = Vec::with_capacity(13);
         let (mut file, mut rank) = square.to_tuple();
         loop {
             match file.checked_add_signed(offset_file) {
@@ -266,7 +266,7 @@ impl Board {
     }
 
     fn bishop_moves(&self, square: Square) -> Vec<Square> {
-        let mut moves = Vec::new();
+        let mut moves = Vec::with_capacity(4);
 
         moves.append(&mut Self::calculate_sliding(square, -1, -1)); // Down left
         moves.append(&mut Self::calculate_sliding(square, 1, -1)); // Up left
@@ -277,7 +277,7 @@ impl Board {
     }
 
     fn rook_moves(&self, square: Square) -> Vec<Square> {
-        let mut moves = Vec::new();
+        let mut moves = Vec::with_capacity(4);
 
         moves.append(&mut Self::calculate_sliding(square, 0, -1)); // Left
         moves.append(&mut Self::calculate_sliding(square, 1, 0)); // Up
@@ -304,7 +304,7 @@ impl Board {
     }
 
     fn pawn_moves(&self, square: Square) -> Vec<Square> {
-        let mut pawn_moves = Vec::with_capacity(5);
+        let mut pawn_moves = Vec::with_capacity(4);
         if [1, 6].contains(&square.rank()) {
             pawn_moves.push(square.add_file(2 * self.side_multiplier()));
         }

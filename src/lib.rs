@@ -1,8 +1,9 @@
 #![feature(iter_collect_into)]
+#![feature(const_option)]
 pub mod piecelist;
 
 use crate::piecelist::SquareList;
-use std::{fmt::Display, num::ParseIntError};
+use std::{fmt::Display, num::ParseIntError, ops::Add};
 
 use bevy::prelude::{Component, Resource};
 use thiserror::Error;
@@ -42,6 +43,26 @@ pub struct Board {
 #[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct Square(u8);
 
+impl Add for Square {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self::try_from_square(self.0 + rhs.0).expect(
+            "Square + Square was expected to be inside the chess board, but was over the maximum",
+        )
+    }
+}
+
+impl Add<(i8, i8)> for Square {
+    type Output = Self;
+
+    fn add(self, rhs: (i8, i8)) -> Self::Output {
+        self.try_add_tuple(rhs).expect(
+            "Square + tuple was expected to be inside the chess board, but was over the maximum",
+        )
+    }
+}
+
 #[derive(Clone, Eq, PartialEq, Debug, Error)]
 pub enum AlgebraicSqaureConversionError {
     #[error("String length was expected to be 2. Got {0}")]
@@ -54,6 +75,18 @@ pub enum AlgebraicSqaureConversionError {
     RankDigitIsOutsideOfValidRange(u32),
 }
 
+#[derive(Clone, Eq, PartialEq, Debug, Error)]
+pub enum LateralPositionToSquareConversionError {
+    #[error("file (0 indexed) should not be larger than 7. Actual {0}")]
+    FileTooLarge(u8),
+    #[error("rank (0 indexed) should not be larger than 7. Actual {0}")]
+    RankTooLarge(u8),
+    #[error("file should not be negative. Actual {0}")]
+    FileNegative(i8),
+    #[error("rank should not be negative. Actual {0}")]
+    RankNegative(i8),
+}
+
 impl Display for Square {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}{}", (self.file() + b'a') as char, self.rank() + 1)
@@ -61,12 +94,29 @@ impl Display for Square {
 }
 
 impl Square {
-    pub const fn from_square(square_index: u8) -> Square {
-        assert!(
-            square_index <= 63,
-            "square_index cannot be larger than 63 (0 indexed)"
-        );
-        Square(square_index)
+    pub fn from_square(square_index: u8) -> Square {
+        Self::try_from_square(square_index)
+            .expect("Square was expected to be inside the chess board, but was over the maximum")
+    }
+
+    pub const fn try_from_square(square_index: u8) -> Option<Square> {
+        match square_index <= 63 {
+            true => Some(Square(square_index)),
+            false => None,
+        }
+    }
+
+    pub const fn try_from_lateral(
+        file: u8,
+        rank: u8,
+    ) -> Result<Square, LateralPositionToSquareConversionError> {
+        if file > 7 {
+            return Err(LateralPositionToSquareConversionError::FileTooLarge(file));
+        }
+        if rank > 7 {
+            return Err(LateralPositionToSquareConversionError::RankTooLarge(rank));
+        }
+        Ok(Square(rank * 8 + file))
     }
 
     pub const fn from_lateral(file: u8, rank: u8) -> Square {
@@ -82,6 +132,70 @@ impl Square {
     pub const fn rank(self) -> u8 {
         self.0 / 8
     }
+
+    pub const fn to_tuple(self) -> (u8, u8) {
+        (self.file(), self.rank()) // Don't worry, this gets optimized and isn't wasteful
+    }
+
+    pub fn add_file(self, offset: i8) -> Self {
+        self.try_add_tuple((offset, 0))
+            .expect("Cannot add file offset")
+    }
+
+    pub fn add_rank(self, offset: i8) -> Self {
+        self.try_add_tuple((0, offset))
+            .expect("Cannot add rank offset")
+    }
+
+    pub const fn try_add(self, rhs: Self) -> Option<Self> {
+        Square::try_from_square(self.0 + rhs.0)
+    }
+
+    pub const fn try_add_tuple(
+        self,
+        rhs: (i8, i8),
+    ) -> Result<Self, LateralPositionToSquareConversionError> {
+        let (lhs_file, lhs_rank) = self.to_tuple();
+        let (rhs_file, rhs_rank) = rhs;
+        let file = match lhs_file.checked_add_signed(rhs_file) {
+            Some(f) => Ok(f),
+            None => Err(LateralPositionToSquareConversionError::FileNegative(
+                rhs_file.saturating_add_unsigned(lhs_file),
+            )),
+        };
+        let rank = match lhs_rank.checked_add_signed(rhs_rank) {
+            Some(r) => Ok(r),
+            None => Err(LateralPositionToSquareConversionError::RankNegative(
+                rhs_rank.saturating_add_unsigned(lhs_rank),
+            )),
+        };
+        match (file, rank) {
+            (Ok(file), Ok(rank)) => Self::try_from_lateral(file, rank),
+            (Ok(_), Err(err)) => Err(err),
+            (Err(err), _) => Err(err),
+        }
+    }
+
+    // pub fn try_add_tuple_non_const(
+    //     self,
+    //     rhs: (i8, i8),
+    // ) -> Result<Self, LateralPositionToSquareConversionError> {
+    //     let (lhs_file, lhs_rank) = self.to_tuple();
+    //     let (rhs_file, rhs_rank) = rhs;
+
+    //     let file = lhs_file.checked_add_signed(rhs_file).ok_or_else(|| {
+    //         LateralPositionToSquareConversionError::FileNegative(
+    //             rhs_file.saturating_add_unsigned(lhs_file),
+    //         )
+    //     })?;
+    //     let rank = lhs_rank.checked_add_signed(rhs_rank).ok_or_else(|| {
+    //         LateralPositionToSquareConversionError::RankNegative(
+    //             rhs_rank.saturating_add_unsigned(lhs_rank),
+    //         )
+    //     })?;
+
+    //     Self::try_from_lateral(file, rank)
+    // }
 
     pub fn from_algebraic(square: &str) -> Square {
         Self::try_from_algebraic(square).expect("Square was not able to be parsed.")
@@ -112,8 +226,7 @@ impl Square {
 impl Board {
     fn calculate_sliding(square: Square, offset_file: i8, offset_rank: i8) -> Vec<Square> {
         let mut moves = Vec::new();
-        let mut file = square.file();
-        let mut rank = square.rank();
+        let (mut file, mut rank) = square.to_tuple();
         loop {
             match file.checked_add_signed(offset_file) {
                 Some(f) if f <= 7 => file = f,
@@ -161,19 +274,39 @@ impl Board {
             (-2, -1),
             (-1, -2),
         ]
-        .map(|(path_file, path_rank)| {
-            Square::from_lateral(
-                square.file().saturating_add_signed(path_file),
-                square.rank().saturating_add_signed(path_rank),
-            )
-        })
-        .to_vec()
+        .into_iter()
+        .filter_map(|offset| square.try_add_tuple(offset).ok())
+        .collect()
+    }
+
+    fn pawn_moves(&self, square: Square) -> Vec<Square> {
+        let mut pawn_moves = Vec::with_capacity(5);
+        if [1, 6].contains(&square.rank()) {
+            pawn_moves.push(square.add_file(2 * self.side_multiplier()));
+        }
+        for offset in [-1, 1] {
+            let square = square.add_rank(offset);
+        }
+        pawn_moves.push(square.add_file(1));
+        pawn_moves
     }
 
     fn get_legalmoves(&self) -> Vec<Move> {
         for piece in self.get_all_pieces() {
             let moves: Vec<Square> = match piece.piece_type() {
-                PieceType::King => todo!(),
+                PieceType::King => [
+                    (-1, -1),
+                    (-1, 0),
+                    (-1, 1),
+                    (0, -1),
+                    (0, 1),
+                    (1, -1),
+                    (1, 0),
+                    (1, 1),
+                ]
+                .into_iter()
+                .map(|offset| piece.square() + offset)
+                .collect(),
                 PieceType::Queen => {
                     let mut rook_moves = self.rook_moves(piece.square());
                     rook_moves.append(&mut self.bishop_moves(piece.square()));
@@ -181,8 +314,8 @@ impl Board {
                 }
                 PieceType::Rook => self.rook_moves(piece.square()),
                 PieceType::Bishop => self.bishop_moves(piece.square()),
-                PieceType::Knight => todo!(),
-                PieceType::Pawn => todo!(),
+                PieceType::Knight => self.knight_moves(piece.square()),
+                PieceType::Pawn => self.pawn_moves(piece.square()),
             };
         }
         todo!()
@@ -191,6 +324,13 @@ impl Board {
     fn make_move(&mut self, mv: Move) {
         self.clear_square(mv.from);
         self.set_square(mv.piece())
+    }
+
+    fn side_multiplier(&self) -> i8 {
+        match self.side_to_move {
+            true => 1,
+            false => -1,
+        }
     }
 
     fn set_square(&mut self, piece: Piece) {
@@ -218,6 +358,24 @@ impl Board {
 
     pub const fn get_bitboard(&self, piece_type: PieceType, is_white: bool) -> u64 {
         self.bit_boards[convert_piece_to_index(piece_type, is_white)]
+    }
+
+    pub const fn get_bitboard_of_color(&self, is_white: bool) -> u64 {
+        let offset = !is_white as usize * 6;
+        let bit_boards = self.bit_boards;
+        // bit_boards[offset..6 + offset] // can't use because of const
+        //     .iter()
+        //     .fold(0, |acc, e| acc | e)
+        bit_boards[offset]
+            | bit_boards[1 + offset]
+            | bit_boards[2 + offset]
+            | bit_boards[3 + offset]
+            | bit_boards[4 + offset]
+            | bit_boards[5 + offset]
+    }
+
+    pub const fn get_bitboard_all_pieces(&self) -> u64 {
+        self.get_bitboard_of_color(true) | self.get_bitboard_of_color(false)
     }
 
     pub const fn get_piecelist(&self, piece_type: PieceType, is_white: bool) -> SquareList {
@@ -704,5 +862,45 @@ mod tests {
         correct.sort();
 
         assert_eq!(moves, correct);
+    }
+
+    #[test]
+    fn square_add_tuple() {
+        assert_eq!(
+            Square::from_lateral(2, 3) + (5, 4),
+            Square::from_lateral(7, 7)
+        );
+    }
+
+    #[test]
+    fn square_add_tuple_negative() {
+        assert_eq!(
+            Square::from_lateral(2, 2).try_add_tuple((-3, -1)),
+            Err(LateralPositionToSquareConversionError::FileNegative(-1))
+        );
+        assert_eq!(
+            Square::from_lateral(2, 2).try_add_tuple((-1, -3)),
+            Err(LateralPositionToSquareConversionError::RankNegative(-1))
+        );
+        assert_eq!(
+            Square::from_lateral(6, 3) + (-6, -2),
+            Square::from_lateral(0, 1)
+        );
+    }
+
+    #[test]
+    fn square_add_square() {
+        assert_eq!(
+            Square::from_lateral(3, 6) + Square::from_lateral(4, 1),
+            Square::from_lateral(7, 7)
+        );
+    }
+
+    #[test]
+    fn square_add_square_over_max() {
+        assert_eq!(
+            Square::from_lateral(4, 6).try_add(Square::from_lateral(4, 1)),
+            None
+        );
     }
 }

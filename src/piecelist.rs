@@ -17,7 +17,7 @@ pub struct SquareList {
 impl SquareList {
     pub const fn new() -> SquareList {
         SquareList {
-            list: [Square::from_square(0); PIECE_LIST_SIZE],
+            list: [Square::try_from_square(0).unwrap(); PIECE_LIST_SIZE],
             size: 0,
         }
     }

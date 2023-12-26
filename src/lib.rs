@@ -3,7 +3,11 @@
 pub mod piecelist;
 
 use crate::piecelist::SquareList;
-use std::{fmt::Display, num::ParseIntError, ops::Add};
+use std::{
+    fmt::Display,
+    num::ParseIntError,
+    ops::{Add, Sub},
+};
 
 use bevy::prelude::{Component, Resource};
 use thiserror::Error;
@@ -60,6 +64,26 @@ impl Add<(i8, i8)> for Square {
         self.try_add_tuple(rhs).expect(
             "Square + tuple was expected to be inside the chess board, but was over the maximum",
         )
+    }
+}
+
+impl Sub for Square {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self::try_from_square(self.0 - rhs.0).expect(
+            "Square - Square was expected to be inside the chess board, but was under the minimum",
+        )
+    }
+}
+
+impl Sub<(i8, i8)> for Square {
+    type Output = Self;
+
+    fn sub(self, rhs: (i8, i8)) -> Self::Output {
+        let (file, rank) = rhs;
+        self.try_add_tuple(rhs)
+            .expect("Square - tuple was expected to be inside the chess board, but wasn't")
     }
 }
 
@@ -759,28 +783,30 @@ mod tests {
 
     #[test]
     fn bishop_test() {
-        // Position: 4|2
-        // 0 0 0 0 0 0 0 0
-        // \ 0 0 0 0 0 0 0
-        // 0 \ 0 0 0 0 0 0
-        // 0 0 x 0 0 0 0 0
-        // 0 0 0 0 0 0 0 0
-        // 0 0 0 0 0 0 0 0
-        // 0 0 0 0 0 0 0 0
-        // 0 0 0 0 0 0 0 0
+        // Position: e3
+        // 7 0 0 0 0 0 0 0 0
+        // 6 \ 0 0 0 0 0 0 0
+        // 5 0 \ 0 0 0 0 0 /
+        // 4 0 0 \ 0 0 0 / 0
+        // 3 0 0 0 \ 0 / 0 0
+        // 2 0 0 0 0 x 0 0 0
+        // 1 0 0 0 / 0 \ 0 0
+        // 0 0 0 / 0 0 0 \ 0
+        //   a b c d e f g h
+        //   0 1 2 3 4 5 6 7
         let mut moves = Board::default().bishop_moves(Square::from_lateral(4, 2));
         moves.sort();
 
         let mut correct: [Square; 11] = [
-            // top left
+            // down right
             (6, 0),
             (5, 1),
-            // right down
+            // top left
             (3, 3),
             (2, 4),
             (1, 5),
             (0, 6),
-            // left down
+            // down left
             (3, 1),
             (2, 0),
             // right up
@@ -796,34 +822,36 @@ mod tests {
 
     #[test]
     fn rook_test() {
-        // Position: 4|2
-        // 0 0 | 0 0 0 0 0
-        // 0 0 | 0 0 0 0 0
-        // 0 0 | 0 0 0 0 0
-        // - - x - - - - -
-        // 0 0 | 0 0 0 0 0
-        // 0 0 | 0 0 0 0 0
-        // 0 0 | 0 0 0 0 0
-        // 0 0 | 0 0 0 0 0
+        // Position: e3
+        // 7 0 0 0 0 | 0 0 0
+        // 6 0 0 0 0 | 0 0 0
+        // 5 0 0 0 0 | 0 0 0
+        // 4 0 0 0 0 | 0 0 0
+        // 3 0 0 0 0 | 0 0 0
+        // 2 - - - - x - - -
+        // 1 0 0 0 0 | 0 0 0
+        // 0 0 0 0 0 | 0 0 0
+        //   a b c d e f g h
+        //   0 1 2 3 4 5 6 7
         let mut moves = Board::default().rook_moves(Square::from_lateral(4, 2));
         moves.sort();
 
         let mut correct: [Square; 14] = [
-            // left
+            // down
             (4, 0),
             (4, 1),
-            // right
+            // up
             (4, 3),
             (4, 4),
             (4, 5),
             (4, 6),
             (4, 7),
-            // down
+            // left
             (0, 2),
             (1, 2),
             (2, 2),
             (3, 2),
-            // top
+            // right
             (5, 2),
             (6, 2),
             (7, 2),
@@ -836,15 +864,17 @@ mod tests {
 
     #[test]
     fn knight_test() {
-        // Position: 4|2
-        // 0 0 0 0 0 0 0 0
-        // 0 * 0 * 0 0 0 0
-        // * 0 0 0 * 0 0 0
-        // 0 0 x 0 0 0 0 0
-        // * 0 0 0 * 0 0 0
-        // 0 * 0 * 0 0 0 0
-        // 0 0 0 0 0 0 0 0
-        // 0 0 0 0 0 0 0 0
+        // Position: e3
+        // 7 0 0 0 0 0 0 0 0
+        // 6 0 0 0 0 0 0 0 0
+        // 5 0 0 0 0 0 0 0 0
+        // 4 0 0 0 x 0 x 0 0
+        // 3 0 0 x 0 0 0 x 0
+        // 2 0 0 0 0 k 0 0 0
+        // 1 0 0 x 0 0 0 x 0
+        // 0 0 0 0 x 0 x 0 0
+        //   a b c d e f g h
+        //   0 1 2 3 4 5 6 7
         let mut moves = Board::default().knight_moves(Square::from_lateral(4, 2));
         moves.sort();
 

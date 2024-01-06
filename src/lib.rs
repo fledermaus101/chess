@@ -10,7 +10,6 @@ use std::{
     ops::{Add, Sub},
 };
 
-use bevy::prelude::{Component, Resource};
 use thiserror::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -33,7 +32,7 @@ impl Move {
     }
 }
 
-#[derive(Clone, Copy, Resource)]
+#[derive(Clone, Copy)]
 pub struct Board {
     bit_boards: [u64; 12],
     squarelists: [SquareList; PIECE_TYPE_VARIANTS.len() * 2],
@@ -565,7 +564,7 @@ impl Display for PieceType {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord, Hash, Component)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct Piece {
     square: Square,
     piece_type: PieceType,

@@ -4,6 +4,7 @@ pub mod piecelist;
 
 use crate::piecelist::SquareList;
 use std::{
+    fmt::Debug,
     fmt::Display,
     num::ParseIntError,
     ops::{Add, Sub},
@@ -18,6 +19,8 @@ pub struct Move {
     to: Square,
     piece_type: PieceType,
     is_white: bool,
+    promotion_piece: Option<PieceType>,
+    is_castling: bool,
 }
 
 impl Move {
@@ -38,10 +41,7 @@ pub struct Board {
     half_moves: u8, // should never be larger than 100, as that would be a draw
     full_moves: u32,
     en_passant_square: Option<Square>,
-    castling_white_kingside: bool,
-    castling_white_queenside: bool,
-    castling_black_kingside: bool,
-    castling_black_queenside: bool,
+    castling_rights: [bool; 4],
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Hash)]
@@ -147,6 +147,15 @@ impl Square {
         assert!(file <= 7, "file cannot be larger than 7 (0 indexed)");
         assert!(rank <= 7, "rank cannot be larger than 7 (0 indexed)");
         Square(rank * 8 + file)
+    }
+
+    /// Returns the mirrored square across the horizontal middle line
+    /// e.g. 4|0 -> 4|7
+    pub const fn complement_rank(self) -> Square {
+        //7b - (ab + c) + 2c = 7b - ab + c | where a=rank b=8 c=file
+        //benchmarks show no difference between the two
+        // Square::from_lateral(7 - self.rank(), self.file()) // rhs of the equation
+        Square((7 * 8 - self.0) + 2 * self.file()) // lhs of the equation
     }
 
     pub const fn file(self) -> u8 {
@@ -305,23 +314,53 @@ impl Board {
 
     fn pawn_moves(&self, square: Square) -> Vec<Square> {
         let mut pawn_moves = Vec::with_capacity(4);
-        if [1, 6].contains(&square.rank()) {
+        let start_rank = match self.side_to_move {
+            true => 1,
+            false => 6,
+        };
+        if square.rank() == start_rank {
             // double push pawns
-            pawn_moves.push(square.add_file(2 * self.side_multiplier()));
+            pawn_moves.push(square.add_rank(2 * self.side_multiplier()));
         }
         for offset in [-1, 1] {
             // diagonal capture
-            let square = square.add_rank(offset);
-            pawn_moves.push(square);
+            if let Ok(square) = square.try_add_tuple((offset, self.side_multiplier())) {
+                let mut bitboard = self.get_bitboard_of_color(!self.side_to_move);
+                if let Some(en_passant_square) = self.en_passant_square {
+                    bitboard |= 1 << en_passant_square.0;
+                }
+                if 1 << square.0 & bitboard != 0 {
+                    pawn_moves.push(square);
+                }
+            }
         }
-        // advance pawn by 1
-        pawn_moves.push(square.add_file(self.side_multiplier()));
+        if square.rank() == 7 - start_rank {
+            for promotion_piece in [
+                PieceType::Knight,
+                PieceType::Bishop,
+                PieceType::Rook,
+                PieceType::Queen,
+            ] {
+                Move {
+                    from: square,
+                    to: square.add_rank(self.side_multiplier()),
+                    piece_type: PieceType::Pawn,
+                    is_white: self.side_to_move,
+                    promotion_piece: Some(promotion_piece),
+                    is_castling: false,
+                };
+            }
+        } else {
+            // advance pawn by 1
+            pawn_moves.push(square.add_rank(self.side_multiplier()));
+        }
 
         pawn_moves
     }
 
-    fn get_legalmoves(&self) -> Vec<Move> {
-        for piece in self.get_all_pieces() {
+    fn get_pseudo_legalmoves(&self) -> Vec<Move> {
+        let pseudolegal_moves = Vec::new();
+        for piece in self.get_pieces_of_color(self.side_to_move) {
             let moves: Vec<Square> = match piece.piece_type() {
                 PieceType::King => [
                     (-1, -1),
@@ -334,7 +373,7 @@ impl Board {
                     (1, 1),
                 ]
                 .into_iter()
-                .map(|offset| piece.square() + offset)
+                .filter_map(|offset| piece.square().try_add_tuple(offset).ok())
                 .collect(),
                 PieceType::Queen => {
                     let mut rook_moves = self.rook_moves(piece.square());
@@ -347,7 +386,12 @@ impl Board {
                 PieceType::Pawn => self.pawn_moves(piece.square()),
             };
         }
-        todo!()
+
+        //*addr_of!(self.castling_white_kingside).add(!self.side_to_move as usize * 2) } {
+        if self.castling_rights[!self.side_to_move as usize * 2] {
+            // pseudolegal_moves.push()
+        }
+        pseudolegal_moves
     }
 
     fn make_move(&mut self, mv: Move) {
@@ -420,6 +464,19 @@ impl Board {
             })
             .collect()
     }
+
+    pub fn get_pieces_of_color(&self, is_white: bool) -> Vec<Piece> {
+        let offset = !is_white as usize * 6;
+        self.squarelists
+            .into_iter()
+            .enumerate()
+            .skip(offset)
+            .take(6)
+            .flat_map(|(index, squarelist)| {
+                squarelist.into_iter_as_piece(get_index_piece(index), get_index_color(index))
+            })
+            .collect()
+    }
 }
 
 pub const fn convert_piece_to_index(piece_type: PieceType, is_white: bool) -> usize {
@@ -455,10 +512,7 @@ impl Default for Board {
             half_moves: 0,
             full_moves: 0,
             en_passant_square: None,
-            castling_white_kingside: true,
-            castling_white_queenside: true,
-            castling_black_kingside: true,
-            castling_black_queenside: true,
+            castling_rights: [true; 4],
         }
     }
 }
@@ -636,10 +690,7 @@ impl<'a> TryFrom<&'a str> for Board {
             ));
         }
 
-        board.castling_white_kingside = castling_ability.contains('K');
-        board.castling_white_queenside = castling_ability.contains('Q');
-        board.castling_black_kingside = castling_ability.contains('k');
-        board.castling_black_queenside = castling_ability.contains('q');
+        board.castling_rights = ['K', 'Q', 'k', 'q'].map(|ch| castling_ability.contains(ch));
 
         let en_passant_part = parts[3];
         board.en_passant_square = if en_passant_part == "-" {
@@ -789,16 +840,18 @@ mod tests {
     #[test]
     fn bishop_test() {
         // Position: e3
-        // 7 0 0 0 0 0 0 0 0
-        // 6 \ 0 0 0 0 0 0 0
-        // 5 0 \ 0 0 0 0 0 /
-        // 4 0 0 \ 0 0 0 / 0
-        // 3 0 0 0 \ 0 / 0 0
-        // 2 0 0 0 0 x 0 0 0
-        // 1 0 0 0 / 0 \ 0 0
-        // 0 0 0 / 0 0 0 \ 0
-        //   a b c d e f g h
-        //   0 1 2 3 4 5 6 7
+        // rank
+        // |
+        // 7 8 0 0 0 0 0 0 0 0
+        // 6 7 \ 0 0 0 0 0 0 0
+        // 5 6 0 \ 0 0 0 0 0 /
+        // 4 5 0 0 \ 0 0 0 / 0
+        // 3 4 0 0 0 \ 0 / 0 0
+        // 2 3 0 0 0 0 x 0 0 0
+        // 1 2 0 0 0 / 0 \ 0 0
+        // 0 1 0 0 / 0 0 0 \ 0
+        //     a b c d e f g h | file
+        //     0 1 2 3 4 5 6 7
         let mut moves = Board::default().bishop_moves(Square::from_lateral(4, 2));
         moves.sort();
 
@@ -828,16 +881,18 @@ mod tests {
     #[test]
     fn rook_test() {
         // Position: e3
-        // 7 0 0 0 0 | 0 0 0
-        // 6 0 0 0 0 | 0 0 0
-        // 5 0 0 0 0 | 0 0 0
-        // 4 0 0 0 0 | 0 0 0
-        // 3 0 0 0 0 | 0 0 0
-        // 2 - - - - x - - -
-        // 1 0 0 0 0 | 0 0 0
-        // 0 0 0 0 0 | 0 0 0
-        //   a b c d e f g h
-        //   0 1 2 3 4 5 6 7
+        // rank
+        // |
+        // 7 8 0 0 0 0 | 0 0 0
+        // 6 7 0 0 0 0 | 0 0 0
+        // 5 6 0 0 0 0 | 0 0 0
+        // 4 5 0 0 0 0 | 0 0 0
+        // 3 4 0 0 0 0 | 0 0 0
+        // 2 3 - - - - x - - -
+        // 1 2 0 0 0 0 | 0 0 0
+        // 0 1 0 0 0 0 | 0 0 0
+        //     a b c d e f g h | file
+        //     0 1 2 3 4 5 6 7
         let mut moves = Board::default().rook_moves(Square::from_lateral(4, 2));
         moves.sort();
 
@@ -870,16 +925,18 @@ mod tests {
     #[test]
     fn knight_test() {
         // Position: e3
-        // 7 0 0 0 0 0 0 0 0
-        // 6 0 0 0 0 0 0 0 0
-        // 5 0 0 0 0 0 0 0 0
-        // 4 0 0 0 x 0 x 0 0
-        // 3 0 0 x 0 0 0 x 0
-        // 2 0 0 0 0 k 0 0 0
-        // 1 0 0 x 0 0 0 x 0
-        // 0 0 0 0 x 0 x 0 0
-        //   a b c d e f g h
-        //   0 1 2 3 4 5 6 7
+        // rank
+        // |
+        // 7 8 0 0 0 0 0 0 0 0
+        // 6 7 0 0 0 0 0 0 0 0
+        // 5 6 0 0 0 0 0 0 0 0
+        // 4 5 0 0 0 x 0 x 0 0
+        // 3 4 0 0 x 0 0 0 x 0
+        // 2 3 0 0 0 0 k 0 0 0
+        // 1 2 0 0 x 0 0 0 x 0
+        // 0 1 0 0 0 x 0 x 0 0
+        //     a b c d e f g h | file
+        //     0 1 2 3 4 5 6 7
         let mut moves = Board::default().knight_moves(Square::from_lateral(4, 2));
         moves.sort();
 
@@ -894,6 +951,74 @@ mod tests {
             (3, 0),
         ]
         .map(|(file, rank)| Square::from_lateral(file, rank));
+        correct.sort();
+
+        assert_eq!(moves, correct);
+    }
+
+    #[test]
+    fn pawn_test() {
+        // Position: e2
+        // rank
+        // |
+        // 7 8 0 0 0 0 0 0 0 0
+        // 6 7 0 0 0 0 0 0 0 0
+        // 5 6 0 0 0 0 0 0 0 0
+        // 4 5 0 0 0 0 0 0 0 0
+        // 3 4 0 0 0 0 x 0 0 0
+        // 2 3 0 0 0 0 x k 0 0
+        // 1 2 0 0 0 0 p 0 0 0
+        // 0 1 0 0 0 0 0 0 0 0
+        //     a b c d e f g h | file
+        //     0 1 2 3 4 5 6 7
+        let mut board = Board::default();
+        board.set_square(Piece {
+            square: Square::from_lateral(5, 2),
+            piece_type: PieceType::Knight,
+            is_white: false,
+        });
+        let mut moves = board.pawn_moves(Square::from_lateral(4, 1));
+        moves.sort();
+
+        let mut correct =
+            [(4, 2), (4, 3), (5, 2)].map(|(file, rank)| Square::from_lateral(file, rank));
+        correct.sort();
+
+        assert_eq!(moves, correct);
+    }
+
+    #[test]
+    fn pawn_en_passant_test() {
+        // Position: f4
+        // rank
+        // |
+        // 7 8 0 0 0 0 0 0 0 0
+        // 6 7 0 0 0 0 0 0 0 0
+        // 5 6 0 0 0 0 0 0 0 0
+        // 4 5 0 0 0 0 0 0 0 0
+        // 3 4 0 0 0 0 w b 0 0
+        // 2 3 0 0 0 0 x x 0 0
+        // 1 2 0 0 0 0 0 0 0 0
+        // 0 1 0 0 0 0 0 0 0 0
+        //     a b c d e f g h | file
+        //     0 1 2 3 4 5 6 7
+        let mut board = Board::default();
+        board.set_square(Piece {
+            square: Square::from_lateral(5, 3),
+            piece_type: PieceType::Pawn,
+            is_white: false,
+        });
+        board.set_square(Piece {
+            square: Square::from_lateral(4, 3),
+            piece_type: PieceType::Pawn,
+            is_white: true,
+        });
+        board.en_passant_square = Some(Square::from_lateral(4, 2));
+        board.side_to_move = false;
+        let mut moves = board.pawn_moves(Square::from_lateral(5, 3));
+        moves.sort();
+
+        let mut correct = [(5, 2), (4, 2)].map(|(file, rank)| Square::from_lateral(file, rank));
         correct.sort();
 
         assert_eq!(moves, correct);
@@ -937,5 +1062,28 @@ mod tests {
             Square::from_lateral(4, 6).try_add(Square::from_lateral(4, 1)),
             None
         );
+    }
+
+    #[test]
+    fn complement_test() {
+        // Position: d1 -> d7
+        //           g4 -> g5
+        // rank
+        // |
+        // 7 8 0 0 0 m 0 0 0 0
+        // 6 7 0 0 0 0 0 0 0 0
+        // 5 6 0 0 0 0 0 0 0 0
+        // 4 5 0 0 0 0 0 0 m 0
+        //     ---------------
+        // 3 4 0 0 0 0 0 0 x 0
+        // 2 3 0 0 0 0 0 0 0 0
+        // 1 2 0 0 0 0 0 0 0 0
+        // 0 1 0 0 0 x 0 0 0 0
+        //     a b c d e f g h | file
+        //     0 1 2 3 4 5 6 7
+        let square = Square::from_lateral(3, 0);
+        assert_eq!(Square::from_lateral(3, 7), square.complement_rank());
+        let square = Square::from_lateral(6, 3);
+        assert_eq!(Square::from_lateral(6, 4), square.complement_rank());
     }
 }

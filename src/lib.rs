@@ -32,7 +32,7 @@ impl Move {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Board {
     bit_boards: [u64; 12],
     squarelists: [SquareList; PIECE_TYPE_VARIANTS.len() * 2],
@@ -617,20 +617,22 @@ impl Piece {
 impl<'a> TryFrom<&'a str> for Board {
     type Error = FENParseError<'a>;
 
+    // https://www.chessprogramming.org/Forsyth-Edwards_Notation
     fn try_from(fen: &'a str) -> Result<Self, Self::Error> {
         let mut board = Board::default();
 
-        let parts: Vec<_> = fen.split_whitespace().collect();
-        if parts.len() != 6 {
-            return Err(Self::Error::IncorrectAmountOfParts(parts.len()));
+        let fields: Vec<_> = fen.split_whitespace().collect();
+        if fields.len() != 6 {
+            return Err(Self::Error::IncorrectAmountOfParts(fields.len()));
         }
-        // Note: ranks from 8-1
-        let piece_position_part: Vec<_> = parts[0].split('/').collect();
-        if piece_position_part.len() != 8 {
-            return Err(Self::Error::InvalidAmountOfRanks(piece_position_part.len()));
+        let piece_position_field: Vec<_> = fields[0].split('/').collect();
+        if piece_position_field.len() != 8 {
+            return Err(Self::Error::InvalidAmountOfRanks(
+                piece_position_field.len(),
+            ));
         }
-        for (rank_position, rank) in piece_position_part.into_iter().enumerate() {
-            let rank_position = 7 - rank_position;
+        // Note: ranks from 8-1 so reverse to get 1-8
+        for (rank_position, rank) in piece_position_field.into_iter().rev().enumerate() {
             let mut file_position = 0;
             for token in rank.chars() {
                 let mut increment = 1;
@@ -642,9 +644,7 @@ impl<'a> TryFrom<&'a str> for Board {
                     'n' => Some(PieceType::Knight),
                     'p' => Some(PieceType::Pawn),
                     num @ '1'..='8' => {
-                        increment = num
-                            .to_digit(10)
-                            .expect("Couldn't convert {num} to an int. The match arm should make this impossible.").try_into().unwrap();
+                        increment = num.to_digit(10).unwrap().try_into().unwrap();
                         None
                     }
                     _ => return Err(Self::Error::InvalidRankIToken(token)),
@@ -662,7 +662,7 @@ impl<'a> TryFrom<&'a str> for Board {
             }
         }
 
-        board.side_to_move = match parts[1]
+        board.side_to_move = match fields[1]
             .chars()
             .next()
             .expect("2nd part was empty. '.split_whitespace' should make this impossible.")
@@ -674,7 +674,7 @@ impl<'a> TryFrom<&'a str> for Board {
 
         // inefficient because the multiple contains check could be formed into one contains check
         // but who cares?
-        let castling_ability = parts[2];
+        let castling_ability = fields[2];
         if !(castling_ability == "-"
             || castling_ability
                 .chars()
@@ -691,18 +691,17 @@ impl<'a> TryFrom<&'a str> for Board {
 
         board.castling_rights = ['K', 'Q', 'k', 'q'].map(|ch| castling_ability.contains(ch));
 
-        let en_passant_part = parts[3];
-        board.en_passant_square = if en_passant_part == "-" {
-            None
-        } else {
-            Some(Square::try_from_algebraic(en_passant_part)?)
+        let en_passant_part = fields[3];
+        board.en_passant_square = match en_passant_part == "-" {
+            true => None,
+            false => Some(Square::try_from_algebraic(en_passant_part)?),
         };
 
-        board.half_moves = parts[4]
+        board.half_moves = fields[4]
             .parse()
             .map_err(Self::Error::HalfMovesIsNotANumber)?;
 
-        board.full_moves = parts[4]
+        board.full_moves = fields[4]
             .parse()
             .map_err(Self::Error::FullMovesIsNotANumber)?;
 
@@ -1001,19 +1000,8 @@ mod tests {
         // 0 1 0 0 0 0 0 0 0 0
         //     a b c d e f g h | file
         //     0 1 2 3 4 5 6 7
-        let mut board = Board::default();
-        board.set_square(Piece {
-            square: Square::from_lateral(5, 3),
-            piece_type: PieceType::Pawn,
-            is_white: false,
-        });
-        board.set_square(Piece {
-            square: Square::from_lateral(4, 3),
-            piece_type: PieceType::Pawn,
-            is_white: true,
-        });
-        board.en_passant_square = Some(Square::from_lateral(4, 2));
-        board.side_to_move = false;
+        let board: Board = "8/8/8/8/4Pp2/8/8/8 b - e3 0 1".try_into().unwrap();
+
         let mut moves = board.pawn_moves(Square::from_lateral(5, 3));
         moves.sort();
 

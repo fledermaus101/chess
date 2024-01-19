@@ -15,13 +15,21 @@ pub struct SquareList {
 }
 
 impl SquareList {
-    pub const fn new() -> SquareList {
-        SquareList {
-            list: [Square::try_from_square(0).unwrap(); PIECE_LIST_SIZE],
+    #[must_use]
+    #[allow(clippy::missing_panics_doc)]
+    pub const fn new() -> Self {
+        Self {
+            list: [Square::try_from_square(0).expect("0 should be a valid square");
+                PIECE_LIST_SIZE],
             size: 0,
         }
     }
 
+    /// Adds a square to the list
+    ///
+    /// # Panics
+    ///
+    /// Panics if the list is already full
     pub fn add(&mut self, sq: Square) {
         if self.contains(sq) {
             return;
@@ -47,10 +55,12 @@ impl SquareList {
         }
     }
 
+    #[must_use]
     pub fn contains(&self, sq: Square) -> bool {
         self.iter().any(|x| x == &sq)
     }
 
+    #[must_use]
     pub const fn into_iter_as_piece(
         self,
         piece_type: PieceType,

@@ -30,7 +30,8 @@ pub enum CastleMove {
 }
 
 impl Move {
-    pub fn piece(&self) -> Piece {
+    #[must_use]
+    pub const fn piece(&self) -> Piece {
         Piece {
             square: self.to,
             piece_type: self.piece_type,
@@ -124,67 +125,112 @@ impl Display for Square {
 }
 
 impl Square {
-    pub fn from_square(square_index: u8) -> Square {
+    /// Returns a square given a flattened coordinate
+    ///
+    /// # Panics
+    ///
+    /// Panics if `square_index > 63`
+    #[must_use]
+    pub const fn from_square(square_index: u8) -> Self {
         Self::try_from_square(square_index)
             .expect("Square was expected to be inside the chess board, but was over the maximum")
     }
 
-    pub const fn try_from_square(square_index: u8) -> Option<Square> {
-        match square_index <= 63 {
-            true => Some(Square(square_index)),
-            false => None,
+    /// Returns a square given a flattened coordinate if `square_index <= 63`
+    #[must_use]
+    pub const fn try_from_square(square_index: u8) -> Option<Self> {
+        if square_index <= 63 {
+            Some(Self(square_index))
+        } else {
+            None
         }
     }
 
+    /// Returns a square given lateral coordinates
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if `file > 7 || rank > 7`
     pub const fn try_from_lateral(
         file: u8,
         rank: u8,
-    ) -> Result<Square, LateralPositionToSquareConversionError> {
+    ) -> Result<Self, LateralPositionToSquareConversionError> {
         if file > 7 {
             return Err(LateralPositionToSquareConversionError::FileTooLarge(file));
         }
         if rank > 7 {
             return Err(LateralPositionToSquareConversionError::RankTooLarge(rank));
         }
-        Ok(Square(rank * 8 + file))
+        Ok(Self(rank * 8 + file))
     }
 
-    pub const fn from_lateral(file: u8, rank: u8) -> Square {
+    /// Returns a square given lateral coordinates
+    ///
+    /// # Panics
+    ///
+    /// Panics if `file > 7 || rank > 7`
+    #[must_use]
+    pub const fn from_lateral(file: u8, rank: u8) -> Self {
         assert!(file <= 7, "file cannot be larger than 7 (0 indexed)");
         assert!(rank <= 7, "rank cannot be larger than 7 (0 indexed)");
-        Square(rank * 8 + file)
+        Self(rank * 8 + file)
     }
 
+    #[must_use]
     pub const fn file(self) -> u8 {
         self.0 % 8
     }
 
+    #[must_use]
     pub const fn rank(self) -> u8 {
         self.0 / 8
     }
 
+    #[must_use]
     pub const fn rank_mirror(self) -> u8 {
         7 - self.0 / 8
     }
 
+    #[must_use]
     pub const fn to_tuple(self) -> (u8, u8) {
-        (self.file(), self.rank()) // Don't worry, this gets optimized and isn't wasteful
+        (self.file(), self.rank())
     }
 
+    /// Returns a new square with the added file offset
+    ///
+    /// # Panics
+    ///
+    /// Panics if [`file`](Self) + offset is not inside `0..=7`
+    #[must_use]
     pub fn add_file(self, offset: i8) -> Self {
         self.try_add_tuple((offset, 0))
             .expect("Cannot add file offset")
     }
 
+    /// Returns a new square with the added rank offset
+    ///
+    /// # Panics
+    ///
+    /// Panics if `[rank](Self) + offset` is not inside `0..=7`
+    #[must_use]
     pub fn add_rank(self, offset: i8) -> Self {
         self.try_add_tuple((0, offset))
             .expect("Cannot add rank offset")
     }
 
+    #[must_use]
     pub const fn try_add(self, rhs: Self) -> Option<Self> {
-        Square::try_from_square(self.0 + rhs.0)
+        Self::try_from_square(self.0 + rhs.0)
     }
 
+    /// Adds the square and tuple together
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the resulting square is out of bounds, meaning one of
+    /// these conditions is true
+    /// - `file` is not inside `0..=7`
+    /// - `rank` is not inside `0..=7`
     pub const fn try_add_tuple(
         self,
         rhs: (i8, i8),
@@ -205,8 +251,7 @@ impl Square {
         };
         match (file, rank) {
             (Ok(file), Ok(rank)) => Self::try_from_lateral(file, rank),
-            (Ok(_), Err(err)) => Err(err),
-            (Err(err), _) => Err(err),
+            (Ok(_), Err(err)) | (Err(err), _) => Err(err),
         }
     }
 
@@ -231,11 +276,25 @@ impl Square {
     //     Self::try_from_lateral(file, rank)
     // }
 
-    pub fn from_algebraic(square: &str) -> Square {
+    /// Returns a square given a square name
+    ///
+    /// # Panics
+    ///
+    /// See [`try_from_algebraic`](Self)
+    #[must_use]
+    pub fn from_algebraic(square: &str) -> Self {
         Self::try_from_algebraic(square).expect("Square was not able to be parsed.")
     }
 
-    pub fn try_from_algebraic(square: &str) -> Result<Square, AlgebraicSqaureConversionError> {
+    /// Returns a square given a square name
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if
+    /// - `square[0]` is not one of `'a'..='h'`
+    /// - `square[1]` is not one of `'1'..='8'`
+    #[allow(clippy::missing_panics_doc)]
+    pub fn try_from_algebraic(square: &str) -> Result<Self, AlgebraicSqaureConversionError> {
         if square.len() != 2 {
             return Err(AlgebraicSqaureConversionError::WrongLength(square.len()));
         }
@@ -252,20 +311,26 @@ impl Square {
         if !(1..=8).contains(&rank) {
             return Err(AlgebraicSqaureConversionError::RankDigitIsOutsideOfValidRange(rank));
         }
-        Ok(Self::from_lateral(file, (rank - 1) as u8))
+        Ok(Self::from_lateral(
+            file,
+            u8::try_from(rank - 1).expect("Above check should make this impossible"),
+        ))
     }
 }
 
 #[allow(unused)]
 impl Board {
+    #[must_use]
     pub const fn has_kingside_castle_right(&self) -> bool {
         self.castling_rights[!self.side_to_move as usize * 2]
     }
 
+    #[must_use]
     pub const fn has_queenside_castle_right(&self) -> bool {
         self.castling_rights[1 + !self.side_to_move as usize * 2]
     }
 
+    #[must_use]
     fn calculate_sliding(square: Square, offset_file: i8, offset_rank: i8) -> Vec<Square> {
         let mut moves = Vec::with_capacity(13);
         let (mut file, mut rank) = square.to_tuple();
@@ -283,6 +348,7 @@ impl Board {
         moves
     }
 
+    #[must_use]
     fn bishop_moves(&self, square: Square) -> Vec<Move> {
         let mut moves = Vec::with_capacity(4);
 
@@ -304,6 +370,7 @@ impl Board {
             .collect()
     }
 
+    #[must_use]
     fn rook_moves(&self, square: Square) -> Vec<Move> {
         let mut moves = Vec::with_capacity(4);
 
@@ -325,6 +392,7 @@ impl Board {
             .collect()
     }
 
+    #[must_use]
     fn knight_moves(&self, square: Square) -> Vec<Move> {
         [
             (1, -2),
@@ -349,12 +417,10 @@ impl Board {
         .collect()
     }
 
+    #[must_use]
     fn pawn_moves(&self, square: Square) -> Vec<Move> {
         let mut pawn_moves = Vec::with_capacity(4);
-        let start_rank = match self.side_to_move {
-            true => 1,
-            false => 6,
-        };
+        let start_rank = if self.side_to_move { 1 } else { 6 };
         if square.rank() == start_rank {
             // double push pawns
             pawn_moves.push(Move {
@@ -416,6 +482,7 @@ impl Board {
         pawn_moves
     }
 
+    #[must_use]
     fn king_moves(&self, square: Square) -> Vec<Move> {
         let mut king_moves: Vec<_> = [
             (-1, -1),
@@ -461,6 +528,7 @@ impl Board {
         king_moves
     }
 
+    #[must_use]
     fn get_pseudo_legalmoves(&self) -> Vec<Move> {
         let pseudolegal_moves = Vec::new();
         for piece in self.get_pieces_of_color(self.side_to_move) {
@@ -482,13 +550,15 @@ impl Board {
 
     fn make_move(&mut self, mv: Move) {
         self.clear_square(mv.from);
-        self.set_square(mv.piece())
+        self.set_square(mv.piece());
     }
 
-    fn side_multiplier(&self) -> i8 {
-        match self.side_to_move {
-            true => 1,
-            false => -1,
+    #[must_use]
+    const fn side_multiplier(&self) -> i8 {
+        if self.side_to_move {
+            1
+        } else {
+            -1
         }
     }
 
@@ -507,18 +577,20 @@ impl Board {
     }
 
     fn clear_square(&mut self, square: Square) {
-        for bit_board in self.bit_boards.iter_mut() {
+        for bit_board in &mut self.bit_boards {
             *bit_board &= !(1 << square.0);
         }
-        for squarelist in self.squarelists.iter_mut() {
+        for squarelist in &mut self.squarelists {
             squarelist.remove(square);
         }
     }
 
+    #[must_use]
     pub const fn get_bitboard(&self, piece_type: PieceType, is_white: bool) -> u64 {
         self.bit_boards[convert_piece_to_index(piece_type, is_white)]
     }
 
+    #[must_use]
     pub const fn get_bitboard_of_color(&self, is_white: bool) -> u64 {
         let offset = !is_white as usize * 6;
         let bit_boards = self.bit_boards;
@@ -533,14 +605,17 @@ impl Board {
             | bit_boards[5 + offset]
     }
 
+    #[must_use]
     pub const fn get_bitboard_all_pieces(&self) -> u64 {
         self.get_bitboard_of_color(true) | self.get_bitboard_of_color(false)
     }
 
+    #[must_use]
     pub const fn get_piecelist(&self, piece_type: PieceType, is_white: bool) -> SquareList {
         self.squarelists[convert_piece_to_index(piece_type, is_white)]
     }
 
+    #[must_use]
     pub fn get_all_pieces(&self) -> Vec<Piece> {
         self.squarelists
             .into_iter()
@@ -551,8 +626,9 @@ impl Board {
             .collect()
     }
 
+    #[must_use]
     pub fn get_pieces_of_color(&self, is_white: bool) -> Vec<Piece> {
-        let offset = !is_white as usize * 6;
+        let offset = usize::from(!is_white) * 6;
         self.squarelists
             .into_iter()
             .enumerate()
@@ -565,6 +641,8 @@ impl Board {
     }
 }
 
+/// Returns an index, given a [`PieceType`] and its `color`, commonly used as an index into an array
+#[must_use]
 pub const fn convert_piece_to_index(piece_type: PieceType, is_white: bool) -> usize {
     // 4 bits | 2 ^ 4 = 16 possible states
     // 12 are valid
@@ -578,12 +656,24 @@ pub const fn convert_piece_to_index(piece_type: PieceType, is_white: bool) -> us
     piece_type as usize + !is_white as usize * 6
 }
 
+/// Returns the [`PieceType`] of the index
+///
+/// # Panics
+///
+/// Panics if index > 11
+#[must_use]
 pub const fn get_index_piece(index: usize) -> PieceType {
     assert!(index <= 0b1011);
     PIECE_TYPE_VARIANTS[index % 6]
     //unsafe { transmute::<u8, PieceType>((index % 6) as u8) }
 }
 
+/// Returns the color of the index
+///
+/// # Panics
+///
+/// Panics if index > 11
+#[must_use]
 pub const fn get_index_color(index: usize) -> bool {
     assert!(index <= 0b1011);
     index < 0b0110
@@ -625,14 +715,14 @@ pub enum PieceType {
 }
 
 impl PieceType {
-    fn algebraic_name(&self) -> &'static str {
+    const fn algebraic_name(self) -> &'static str {
         match self {
-            PieceType::King => "K",
-            PieceType::Queen => "Q",
-            PieceType::Rook => "R",
-            PieceType::Bishop => "B",
-            PieceType::Knight => "N",
-            PieceType::Pawn => "",
+            Self::King => "K",
+            Self::Queen => "Q",
+            Self::Rook => "R",
+            Self::Bishop => "B",
+            Self::Knight => "N",
+            Self::Pawn => "",
         }
     }
 }
@@ -640,14 +730,14 @@ impl PieceType {
 impl Display for PieceType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let name = match self {
-            PieceType::King => "King",
-            PieceType::Queen => "Queen",
-            PieceType::Rook => "Rook",
-            PieceType::Bishop => "Bishop",
-            PieceType::Knight => "Knight",
-            PieceType::Pawn => "Pawn",
+            Self::King => "King",
+            Self::Queen => "Queen",
+            Self::Rook => "Rook",
+            Self::Bishop => "Bishop",
+            Self::Knight => "Knight",
+            Self::Pawn => "Pawn",
         };
-        write!(f, "{}", name)
+        write!(f, "{name}")
     }
 }
 
@@ -669,26 +759,31 @@ impl Display for Piece {
 }
 
 impl Piece {
+    #[must_use]
     pub const fn square(&self) -> Square {
         self.square
     }
 
+    #[must_use]
     pub const fn piece_type(&self) -> PieceType {
         self.piece_type
     }
 
-    pub const fn new(square: Square, piece_type: PieceType, is_white: bool) -> Piece {
-        Piece {
+    #[must_use]
+    pub const fn new(square: Square, piece_type: PieceType, is_white: bool) -> Self {
+        Self {
             square,
             piece_type,
             is_white,
         }
     }
 
+    #[must_use]
     pub const fn is_white(&self) -> bool {
         self.is_white
     }
 
+    #[must_use]
     pub fn legal_moves(&self) -> &[Square] {
         match self.piece_type() {
             PieceType::King => todo!(),
@@ -706,7 +801,7 @@ impl<'a> TryFrom<&'a str> for Board {
 
     // https://www.chessprogramming.org/Forsyth-Edwards_Notation
     fn try_from(fen: &'a str) -> Result<Self, Self::Error> {
-        let mut board = Board::default();
+        let mut board = Self::default();
 
         let fields: Vec<_> = fen.split_whitespace().collect();
         if fields.len() != 6 {
@@ -731,7 +826,13 @@ impl<'a> TryFrom<&'a str> for Board {
                     'n' => Some(PieceType::Knight),
                     'p' => Some(PieceType::Pawn),
                     num @ '1'..='8' => {
-                        increment = num.to_digit(10).unwrap().try_into().unwrap();
+                        increment = num
+                            .to_digit(10)
+                            .expect("Above check should only allow integers")
+                            .try_into()
+                            .expect(
+                                "Casting a u32 to a u8 which is at maximum 9 should always succeed",
+                            );
                         None
                     }
                     _ => return Err(Self::Error::InvalidRankIToken(token)),
@@ -740,10 +841,10 @@ impl<'a> TryFrom<&'a str> for Board {
                     #[cfg(test)]
                     println!("chr: {token} | File: {file_position} | Rank: {rank_position} | Is_white: {}", token.is_ascii_uppercase());
                     board.set_square(Piece::new(
-                        Square::from_lateral(file_position, rank_position.try_into().unwrap()),
+                        Square::from_lateral(file_position, rank_position.try_into().expect("rank_position should be at max 7 and as such never fail to cast to a u8")),
                         piece_type,
                         token.is_ascii_uppercase(),
-                    ))
+                    ));
                 }
                 file_position += increment;
             }
@@ -779,9 +880,10 @@ impl<'a> TryFrom<&'a str> for Board {
         board.castling_rights = ['K', 'Q', 'k', 'q'].map(|ch| castling_ability.contains(ch));
 
         let en_passant_part = fields[3];
-        board.en_passant_square = match en_passant_part == "-" {
-            true => None,
-            false => Some(Square::try_from_algebraic(en_passant_part)?),
+        board.en_passant_square = if en_passant_part == "-" {
+            None
+        } else {
+            Some(Square::try_from_algebraic(en_passant_part)?)
         };
 
         board.half_moves = fields[4]

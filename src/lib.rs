@@ -19,7 +19,14 @@ pub struct Move {
     piece_type: PieceType,
     is_white: bool,
     promotion_piece: Option<PieceType>,
-    is_castling: bool,
+    is_castling: CastleMove,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CastleMove {
+    KingSide,
+    QueenSide,
+    None,
 }
 
 impl Move {
@@ -40,7 +47,7 @@ pub struct Board {
     half_moves: u8, // should never be larger than 100, as that would be a draw
     full_moves: u32,
     en_passant_square: Option<Square>,
-    castling_rights: [bool; 4],
+    castling_rights: [bool; 4], // white kingside, white queenside, black kingside, black queenside
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Hash)]
@@ -148,21 +155,16 @@ impl Square {
         Square(rank * 8 + file)
     }
 
-    /// Returns the mirrored square across the horizontal middle line
-    /// e.g. 4|0 -> 4|7
-    pub const fn complement_rank(self) -> Square {
-        //7b - (ab + c) + 2c = 7b - ab + c | where a=rank b=8 c=file
-        //benchmarks show no difference between the two
-        // Square::from_lateral(7 - self.rank(), self.file()) // rhs of the equation
-        Square((7 * 8 - self.0) + 2 * self.file()) // lhs of the equation
-    }
-
     pub const fn file(self) -> u8 {
         self.0 % 8
     }
 
     pub const fn rank(self) -> u8 {
         self.0 / 8
+    }
+
+    pub const fn rank_mirror(self) -> u8 {
+        7 - self.0 / 8
     }
 
     pub const fn to_tuple(self) -> (u8, u8) {
@@ -256,6 +258,14 @@ impl Square {
 
 #[allow(unused)]
 impl Board {
+    pub const fn has_kingside_castle_right(&self) -> bool {
+        self.castling_rights[!self.side_to_move as usize * 2]
+    }
+
+    pub const fn has_queenside_castle_right(&self) -> bool {
+        self.castling_rights[1 + !self.side_to_move as usize * 2]
+    }
+
     fn calculate_sliding(square: Square, offset_file: i8, offset_rank: i8) -> Vec<Square> {
         let mut moves = Vec::with_capacity(13);
         let (mut file, mut rank) = square.to_tuple();
@@ -273,7 +283,7 @@ impl Board {
         moves
     }
 
-    fn bishop_moves(&self, square: Square) -> Vec<Square> {
+    fn bishop_moves(&self, square: Square) -> Vec<Move> {
         let mut moves = Vec::with_capacity(4);
 
         moves.append(&mut Self::calculate_sliding(square, -1, -1)); // Down left
@@ -282,9 +292,19 @@ impl Board {
         moves.append(&mut Self::calculate_sliding(square, 1, 1)); // Up right
 
         moves
+            .into_iter()
+            .map(|to_square| Move {
+                from: square,
+                to: to_square,
+                piece_type: PieceType::Bishop,
+                is_white: self.side_to_move,
+                promotion_piece: None,
+                is_castling: CastleMove::None,
+            })
+            .collect()
     }
 
-    fn rook_moves(&self, square: Square) -> Vec<Square> {
+    fn rook_moves(&self, square: Square) -> Vec<Move> {
         let mut moves = Vec::with_capacity(4);
 
         moves.append(&mut Self::calculate_sliding(square, 0, -1)); // Left
@@ -293,9 +313,19 @@ impl Board {
         moves.append(&mut Self::calculate_sliding(square, -1, 0)); // Down
 
         moves
+            .into_iter()
+            .map(|to_square| Move {
+                from: square,
+                to: to_square,
+                piece_type: PieceType::Rook,
+                is_white: self.side_to_move,
+                promotion_piece: None,
+                is_castling: CastleMove::None,
+            })
+            .collect()
     }
 
-    fn knight_moves(&self, square: Square) -> Vec<Square> {
+    fn knight_moves(&self, square: Square) -> Vec<Move> {
         [
             (1, -2),
             (2, -1),
@@ -308,10 +338,18 @@ impl Board {
         ]
         .into_iter()
         .filter_map(|offset| square.try_add_tuple(offset).ok())
+        .map(|to_square| Move {
+            from: square,
+            to: to_square,
+            piece_type: PieceType::Knight,
+            is_white: self.side_to_move,
+            promotion_piece: None,
+            is_castling: CastleMove::None,
+        })
         .collect()
     }
 
-    fn pawn_moves(&self, square: Square) -> Vec<Square> {
+    fn pawn_moves(&self, square: Square) -> Vec<Move> {
         let mut pawn_moves = Vec::with_capacity(4);
         let start_rank = match self.side_to_move {
             true => 1,
@@ -319,76 +357,125 @@ impl Board {
         };
         if square.rank() == start_rank {
             // double push pawns
-            pawn_moves.push(square.add_rank(2 * self.side_multiplier()));
+            pawn_moves.push(Move {
+                from: square,
+                to: square.add_rank(2 * self.side_multiplier()),
+                piece_type: PieceType::Pawn,
+                is_white: self.side_to_move,
+                promotion_piece: None,
+                is_castling: CastleMove::None,
+            });
         }
         for offset in [-1, 1] {
             // diagonal capture
-            if let Ok(square) = square.try_add_tuple((offset, self.side_multiplier())) {
+            if let Ok(to_square) = square.try_add_tuple((offset, self.side_multiplier())) {
                 let mut bitboard = self.get_bitboard_of_color(!self.side_to_move);
                 if let Some(en_passant_square) = self.en_passant_square {
                     bitboard |= 1 << en_passant_square.0;
                 }
-                if 1 << square.0 & bitboard != 0 {
-                    pawn_moves.push(square);
+                if 1 << to_square.0 & bitboard != 0 {
+                    pawn_moves.push(Move {
+                        from: square,
+                        to: to_square,
+                        piece_type: PieceType::Pawn,
+                        is_white: self.side_to_move,
+                        promotion_piece: None,
+                        is_castling: CastleMove::None,
+                    });
                 }
             }
         }
-        if square.rank() == 7 - start_rank {
+        if square.rank_mirror() == start_rank {
             for promotion_piece in [
                 PieceType::Knight,
                 PieceType::Bishop,
                 PieceType::Rook,
                 PieceType::Queen,
             ] {
-                Move {
+                pawn_moves.push(Move {
                     from: square,
                     to: square.add_rank(self.side_multiplier()),
                     piece_type: PieceType::Pawn,
                     is_white: self.side_to_move,
                     promotion_piece: Some(promotion_piece),
-                    is_castling: false,
-                };
+                    is_castling: CastleMove::None,
+                });
             }
         } else {
             // advance pawn by 1
-            pawn_moves.push(square.add_rank(self.side_multiplier()));
+            pawn_moves.push(Move {
+                from: square,
+                to: square.add_rank(self.side_multiplier()),
+                piece_type: PieceType::Pawn,
+                is_white: self.side_to_move,
+                promotion_piece: None,
+                is_castling: CastleMove::None,
+            });
         }
 
         pawn_moves
     }
 
+    fn king_moves(&self, square: Square) -> Vec<Move> {
+        let mut king_moves: Vec<_> = [
+            (-1, -1),
+            (-1, 0),
+            (-1, 1),
+            (0, -1),
+            (0, 1),
+            (1, -1),
+            (1, 0),
+            (1, 1),
+        ]
+        .into_iter()
+        .filter_map(|offset| square.try_add_tuple(offset).ok())
+        .map(|square_to| Move {
+            from: square,
+            to: square_to,
+            piece_type: PieceType::King,
+            is_white: self.side_to_move,
+            promotion_piece: None,
+            is_castling: CastleMove::None,
+        })
+        .collect();
+        if self.has_kingside_castle_right() {
+            king_moves.push(Move {
+                from: square,
+                to: square.add_file(2),
+                piece_type: PieceType::King,
+                is_white: self.side_to_move,
+                promotion_piece: None,
+                is_castling: CastleMove::KingSide,
+            });
+        }
+        if self.has_queenside_castle_right() {
+            king_moves.push(Move {
+                from: square,
+                to: square.add_file(-2),
+                piece_type: PieceType::King,
+                is_white: self.side_to_move,
+                promotion_piece: None,
+                is_castling: CastleMove::QueenSide,
+            });
+        }
+        king_moves
+    }
+
     fn get_pseudo_legalmoves(&self) -> Vec<Move> {
         let pseudolegal_moves = Vec::new();
         for piece in self.get_pieces_of_color(self.side_to_move) {
-            let moves: Vec<Square> = match piece.piece_type() {
-                PieceType::King => [
-                    (-1, -1),
-                    (-1, 0),
-                    (-1, 1),
-                    (0, -1),
-                    (0, 1),
-                    (1, -1),
-                    (1, 0),
-                    (1, 1),
-                ]
-                .into_iter()
-                .filter_map(|offset| piece.square().try_add_tuple(offset).ok())
-                .collect(),
+            let moves: Vec<Move> = match piece.piece_type() {
+                PieceType::King => self.king_moves(piece.square()),
                 PieceType::Queen => {
-                    let mut rook_moves = self.rook_moves(piece.square());
-                    rook_moves.append(&mut self.bishop_moves(piece.square()));
-                    rook_moves
+                    let mut queen_moves = self.rook_moves(piece.square());
+                    queen_moves.append(&mut self.bishop_moves(piece.square()));
+                    queen_moves
                 }
                 PieceType::Rook => self.rook_moves(piece.square()),
                 PieceType::Bishop => self.bishop_moves(piece.square()),
                 PieceType::Knight => self.knight_moves(piece.square()),
                 PieceType::Pawn => self.pawn_moves(piece.square()),
             };
-        }
-
-        //*addr_of!(self.castling_white_kingside).add(!self.side_to_move as usize * 2) } {
-        if self.castling_rights[!self.side_to_move as usize * 2] {
-            // pseudolegal_moves.push()
         }
         pseudolegal_moves
     }

@@ -1,6 +1,6 @@
 use chess::piecelist::SquareList;
 use chess::Square;
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("add 10 elems", |b| {
@@ -9,7 +9,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             for i in 0..10 {
                 piecelist.add(black_box(Square::from_square(i)));
             }
-        })
+        });
     });
     c.bench_function("remove all elems", |b| {
         b.iter(|| {
@@ -17,7 +17,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             for i in 0..10 {
                 piecelist.add(black_box(Square::from_square(i)));
             }
-        })
+        });
     });
 }
 

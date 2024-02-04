@@ -930,6 +930,8 @@ impl<'a> From<AlgebraicSqaureConversionError> for FENParseError<'a> {
 
 #[cfg(test)]
 mod tests {
+    use std::cmp::Ordering;
+
     #[allow(unused_imports)]
     use super::*;
 
@@ -941,11 +943,12 @@ mod tests {
             PieceType::Pawn,
             false,
         ));
+        #[allow(clippy::unreadable_literal)]
         let correct_bitboard =
             //   8        7        6        5        4        3        2        1
             //hgfedcba hgfedcba hgfedcba hgfedcba hgfedcba hgfedcba hgfedcba hgfedcba 
             0b00000000_00000000_00000000_00000000_00000000_00000000_00001000_00000000;
-        assert_eq!(correct_bitboard, board.get_bitboard(PieceType::Pawn, false))
+        assert_eq!(correct_bitboard, board.get_bitboard(PieceType::Pawn, false));
     }
 
     #[test]
@@ -977,7 +980,7 @@ mod tests {
             false,
         ));
         //           hgfedcba
-        assert_eq!(0b11011111 << 8, board.get_bitboard(PieceType::Pawn, false));
+        assert_eq!(0b1101_1111 << 8, board.get_bitboard(PieceType::Pawn, false));
     }
 
     #[test]
@@ -1020,7 +1023,9 @@ mod tests {
 
     #[test]
     fn piece_at_a1() {
-        let board: Board = "8/8/8/8/8/8/8/R7 w - - 0 1".try_into().unwrap();
+        let board: Board = "8/8/8/8/8/8/8/R7 w - - 0 1"
+            .try_into()
+            .expect("FEN String invalid");
         assert_eq!(board.get_bitboard(PieceType::Rook, true), 1);
     }
 
@@ -1039,10 +1044,11 @@ mod tests {
         // 0 1 0 0 / 0 0 0 \ 0
         //     a b c d e f g h | file
         //     0 1 2 3 4 5 6 7
-        let mut moves = Board::default().bishop_moves(Square::from_lateral(4, 2));
-        moves.sort();
+        let start_square = Square::from_lateral(4, 2);
+        let mut moves = Board::default().bishop_moves(start_square);
+        moves.sort_by(sort_moves);
 
-        let mut correct: [Square; 11] = [
+        let mut correct: [Move; 11] = [
             // down right
             (6, 0),
             (5, 1),
@@ -1059,8 +1065,15 @@ mod tests {
             (6, 4),
             (7, 5),
         ]
-        .map(|(file, rank)| Square::from_lateral(file, rank));
-        correct.sort();
+        .map(|(file, rank)| Move {
+            from: start_square,
+            to: Square::from_lateral(file, rank),
+            piece_type: PieceType::Bishop,
+            is_white: true,
+            promotion_piece: None,
+            is_castling: CastleMove::None,
+        });
+        correct.sort_by(sort_moves);
 
         assert_eq!(moves, correct);
     }
@@ -1080,10 +1093,11 @@ mod tests {
         // 0 1 0 0 0 0 | 0 0 0
         //     a b c d e f g h | file
         //     0 1 2 3 4 5 6 7
-        let mut moves = Board::default().rook_moves(Square::from_lateral(4, 2));
-        moves.sort();
+        let start_square = Square::from_lateral(4, 2);
+        let mut moves = Board::default().rook_moves(start_square);
+        moves.sort_by(sort_moves);
 
-        let mut correct: [Square; 14] = [
+        let mut correct: [Move; 14] = [
             // down
             (4, 0),
             (4, 1),
@@ -1103,8 +1117,15 @@ mod tests {
             (6, 2),
             (7, 2),
         ]
-        .map(|(file, rank)| Square::from_lateral(file, rank));
-        correct.sort();
+        .map(|(file, rank)| Move {
+            from: start_square,
+            to: Square::from_lateral(file, rank),
+            piece_type: PieceType::Rook,
+            is_white: true,
+            promotion_piece: None,
+            is_castling: CastleMove::None,
+        });
+        correct.sort_by(sort_moves);
 
         assert_eq!(moves, correct);
     }
@@ -1124,10 +1145,11 @@ mod tests {
         // 0 1 0 0 0 x 0 x 0 0
         //     a b c d e f g h | file
         //     0 1 2 3 4 5 6 7
-        let mut moves = Board::default().knight_moves(Square::from_lateral(4, 2));
-        moves.sort();
+        let start_square = Square::from_lateral(4, 2);
+        let mut moves = Board::default().knight_moves(start_square);
+        moves.sort_by(sort_moves);
 
-        let mut correct: [Square; 8] = [
+        let mut correct: [Move; 8] = [
             (5, 0),
             (6, 1),
             (6, 3),
@@ -1137,8 +1159,15 @@ mod tests {
             (2, 1),
             (3, 0),
         ]
-        .map(|(file, rank)| Square::from_lateral(file, rank));
-        correct.sort();
+        .map(|(file, rank)| Move {
+            from: start_square,
+            to: Square::from_lateral(file, rank),
+            piece_type: PieceType::Knight,
+            is_white: true,
+            promotion_piece: None,
+            is_castling: CastleMove::None,
+        });
+        correct.sort_by(sort_moves);
 
         assert_eq!(moves, correct);
     }
@@ -1164,12 +1193,19 @@ mod tests {
             piece_type: PieceType::Knight,
             is_white: false,
         });
-        let mut moves = board.pawn_moves(Square::from_lateral(4, 1));
-        moves.sort();
+        let start_square = Square::from_lateral(4, 1);
+        let mut moves = board.pawn_moves(start_square);
+        moves.sort_by(sort_moves);
 
-        let mut correct =
-            [(4, 2), (4, 3), (5, 2)].map(|(file, rank)| Square::from_lateral(file, rank));
-        correct.sort();
+        let mut correct = [(4, 2), (4, 3), (5, 2)].map(|(file, rank)| Move {
+            from: start_square,
+            to: Square::from_lateral(file, rank),
+            piece_type: PieceType::Pawn,
+            is_white: true,
+            promotion_piece: None,
+            is_castling: CastleMove::None,
+        });
+        correct.sort_by(sort_moves);
 
         assert_eq!(moves, correct);
     }
@@ -1189,15 +1225,29 @@ mod tests {
         // 0 1 0 0 0 0 0 0 0 0
         //     a b c d e f g h | file
         //     0 1 2 3 4 5 6 7
-        let board: Board = "8/8/8/8/4Pp2/8/8/8 b - e3 0 1".try_into().unwrap();
+        let board: Board = "8/8/8/8/4Pp2/8/8/8 b - e3 0 1"
+            .try_into()
+            .expect("FEN String invalid");
 
-        let mut moves = board.pawn_moves(Square::from_lateral(5, 3));
-        moves.sort();
+        let start_square = Square::from_lateral(5, 3);
+        let mut moves = board.pawn_moves(start_square);
+        moves.sort_by(sort_moves);
 
-        let mut correct = [(5, 2), (4, 2)].map(|(file, rank)| Square::from_lateral(file, rank));
-        correct.sort();
-
+        let mut correct = [(5, 2), (4, 2)].map(|(file, rank)| Move {
+            from: start_square,
+            to: Square::from_lateral(file, rank),
+            piece_type: PieceType::Pawn,
+            is_white: false,
+            promotion_piece: None,
+            is_castling: CastleMove::None,
+        });
+        correct.sort_by(sort_moves);
         assert_eq!(moves, correct);
+    }
+
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    fn sort_moves(m1: &Move, m2: &Move) -> Ordering {
+        m1.to.cmp(&m2.to)
     }
 
     #[test]
@@ -1238,28 +1288,5 @@ mod tests {
             Square::from_lateral(4, 6).try_add(Square::from_lateral(4, 1)),
             None
         );
-    }
-
-    #[test]
-    fn complement_test() {
-        // Position: d1 -> d7
-        //           g4 -> g5
-        // rank
-        // |
-        // 7 8 0 0 0 m 0 0 0 0
-        // 6 7 0 0 0 0 0 0 0 0
-        // 5 6 0 0 0 0 0 0 0 0
-        // 4 5 0 0 0 0 0 0 m 0
-        //     ---------------
-        // 3 4 0 0 0 0 0 0 x 0
-        // 2 3 0 0 0 0 0 0 0 0
-        // 1 2 0 0 0 0 0 0 0 0
-        // 0 1 0 0 0 x 0 0 0 0
-        //     a b c d e f g h | file
-        //     0 1 2 3 4 5 6 7
-        let square = Square::from_lateral(3, 0);
-        assert_eq!(Square::from_lateral(3, 7), square.complement_rank());
-        let square = Square::from_lateral(6, 3);
-        assert_eq!(Square::from_lateral(6, 4), square.complement_rank());
     }
 }

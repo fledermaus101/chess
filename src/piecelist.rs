@@ -156,8 +156,10 @@ mod tests {
     )]
     fn piecelist_panic_on_too_many_elements() {
         let mut piecelist = SquareList::new();
-        for i in 0..(PIECE_LIST_SIZE + 1) {
-            piecelist.add(Square::from_square(i as u8));
+        for i in
+            0..=u8::try_from(PIECE_LIST_SIZE).expect("PIECE_LIST_SIZE should not exceed u8::MAX")
+        {
+            piecelist.add(Square::from_square(i));
         }
     }
 
@@ -187,7 +189,7 @@ mod tests {
 
         let mut iter = piecelist.iter();
         assert_eq!(iter.len(), iter.size_hint().0);
-        assert_eq!(iter.len(), iter.size_hint().1.unwrap());
+        assert_eq!(Some(iter.len()), iter.size_hint().1);
         assert_eq!(iter.len(), 3);
         iter.next();
         assert_eq!(iter.len(), 2);
@@ -200,8 +202,8 @@ mod tests {
     #[test]
     fn piecelist_doubleendediterator() {
         let mut squarelist = SquareList::new();
-        for i in 0..=3 {
-            squarelist.add(Square::from_square(i as u8));
+        for i in 0..=3u8 {
+            squarelist.add(Square::from_square(i));
         }
 
         let mut iter = squarelist.iter();
@@ -216,8 +218,8 @@ mod tests {
     #[test]
     fn piecelist_contains() {
         let mut piecelist = SquareList::new();
-        for i in 0..=3 {
-            piecelist.add(Square::from_square(i as u8));
+        for i in 0..=3u8 {
+            piecelist.add(Square::from_square(i));
         }
 
         assert!(piecelist.contains(Square::from_square(2)));

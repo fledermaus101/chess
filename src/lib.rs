@@ -187,11 +187,6 @@ impl Square {
     }
 
     #[must_use]
-    pub const fn rank_mirror(self) -> u8 {
-        7 - self.0 / 8
-    }
-
-    #[must_use]
     pub const fn to_tuple(self) -> (u8, u8) {
         (self.file(), self.rank())
     }
@@ -331,36 +326,42 @@ impl Board {
     }
 
     #[must_use]
-    fn calculate_sliding(square: Square, offset_file: i8, offset_rank: i8) -> Vec<Square> {
+    fn calculate_sliding(
+        self,
+        start_square: Square,
+        offset_file: i8,
+        offset_rank: i8,
+    ) -> Vec<Square> {
+        //TODO: collision with friendly and enemy pieces
+        // if offset_file and offset_rank are 0, then infinite loop :(
+        debug_assert!(!(offset_file == 0 && offset_rank == 0));
         let mut moves = Vec::with_capacity(13);
-        let (mut file, mut rank) = square.to_tuple();
-        loop {
-            match file.checked_add_signed(offset_file) {
-                Some(f) if f <= 7 => file = f,
-                _ => break,
-            };
-            match rank.checked_add_signed(offset_rank) {
-                Some(r) if r <= 7 => rank = r,
-                _ => break,
+        let mut current_square = start_square;
+        while let Ok(sq) = current_square.try_add_tuple((offset_file, offset_rank)) {
+            current_square = sq;
+            let mask = 1 << current_square.0;
+            if 0 != self.get_bitboard_of_color(self.side_to_move) & mask {
+                #[cfg(test)]
+                println!("Friendly at {current_square}");
+                break;
             }
-            moves.push(Square::from_lateral(file, rank));
+            moves.push(current_square);
+            if 0 != self.get_bitboard_of_color(!self.side_to_move) & mask {
+                #[cfg(test)]
+                println!("Enemy at {current_square}");
+                break;
+            }
         }
         moves
     }
 
     #[must_use]
-    fn bishop_moves(&self, square: Square) -> Vec<Move> {
-        let mut moves = Vec::with_capacity(4);
-
-        moves.append(&mut Self::calculate_sliding(square, -1, -1)); // Down left
-        moves.append(&mut Self::calculate_sliding(square, 1, -1)); // Up left
-        moves.append(&mut Self::calculate_sliding(square, -1, 1)); // Down right
-        moves.append(&mut Self::calculate_sliding(square, 1, 1)); // Up right
-
-        moves
+    fn bishop_moves(&self, start_square: Square) -> Vec<Move> {
+        [(-1, -1), (1, -1), (-1, 1), (1, 1)]
             .into_iter()
+            .flat_map(|(file, rank)| self.calculate_sliding(start_square, file, rank))
             .map(|to_square| Move {
-                from: square,
+                from: start_square,
                 to: to_square,
                 piece_type: PieceType::Bishop,
                 is_white: self.side_to_move,
@@ -371,18 +372,12 @@ impl Board {
     }
 
     #[must_use]
-    fn rook_moves(&self, square: Square) -> Vec<Move> {
-        let mut moves = Vec::with_capacity(4);
-
-        moves.append(&mut Self::calculate_sliding(square, 0, -1)); // Left
-        moves.append(&mut Self::calculate_sliding(square, 1, 0)); // Up
-        moves.append(&mut Self::calculate_sliding(square, 0, 1)); // Right
-        moves.append(&mut Self::calculate_sliding(square, -1, 0)); // Down
-
-        moves
+    fn rook_moves(&self, start_square: Square) -> Vec<Move> {
+        [(0, -1), (1, 0), (0, 1), (-1, 0)]
             .into_iter()
+            .flat_map(|(file, rank)| self.calculate_sliding(start_square, file, rank))
             .map(|to_square| Move {
-                from: square,
+                from: start_square,
                 to: to_square,
                 piece_type: PieceType::Rook,
                 is_white: self.side_to_move,
@@ -393,7 +388,7 @@ impl Board {
     }
 
     #[must_use]
-    fn knight_moves(&self, square: Square) -> Vec<Move> {
+    fn knight_moves(&self, start_square: Square) -> Vec<Move> {
         [
             (1, -2),
             (2, -1),
@@ -405,9 +400,9 @@ impl Board {
             (-1, -2),
         ]
         .into_iter()
-        .filter_map(|offset| square.try_add_tuple(offset).ok())
+        .filter_map(|offset| start_square.try_add_tuple(offset).ok())
         .map(|to_square| Move {
-            from: square,
+            from: start_square,
             to: to_square,
             piece_type: PieceType::Knight,
             is_white: self.side_to_move,
@@ -418,65 +413,53 @@ impl Board {
     }
 
     #[must_use]
-    fn pawn_moves(&self, square: Square) -> Vec<Move> {
-        let mut pawn_moves = Vec::with_capacity(4);
+    fn pawn_moves(&self, start_square: Square) -> Vec<Move> {
+        let mut pawn_moves = Vec::with_capacity(12);
+        // i.e. in which directions can the pawn move?
+        let mut available_moves = Vec::with_capacity(4);
+
         let start_rank = if self.side_to_move { 1 } else { 6 };
-        if square.rank() == start_rank {
-            // double push pawns
-            pawn_moves.push(Move {
-                from: square,
-                to: square.add_rank(2 * self.side_multiplier()),
-                piece_type: PieceType::Pawn,
-                is_white: self.side_to_move,
-                promotion_piece: None,
-                is_castling: CastleMove::None,
-            });
+        // double push pawns
+        if start_square.rank() == start_rank {
+            available_moves.push(start_square.add_rank(2 * self.side_multiplier()));
         }
+
+        let mut bitboard = self.get_bitboard_of_color(!self.side_to_move)
+            // add the en_passant_square as a valid capture target
+            | self.en_passant_square.map_or(0, |sq| 1 << sq.0);
+        available_moves.push(start_square.add_rank(self.side_multiplier()));
         for offset in [-1, 1] {
             // diagonal capture
-            if let Ok(to_square) = square.try_add_tuple((offset, self.side_multiplier())) {
-                let mut bitboard = self.get_bitboard_of_color(!self.side_to_move);
-                if let Some(en_passant_square) = self.en_passant_square {
-                    bitboard |= 1 << en_passant_square.0;
-                }
-                if 1 << to_square.0 & bitboard != 0 {
-                    pawn_moves.push(Move {
-                        from: square,
-                        to: to_square,
-                        piece_type: PieceType::Pawn,
-                        is_white: self.side_to_move,
-                        promotion_piece: None,
-                        is_castling: CastleMove::None,
-                    });
+            if let Ok(to_square) = start_square.try_add_tuple((offset, self.side_multiplier())) {
+                if (1 << to_square.0 & bitboard) != 0 {
+                    available_moves.push(to_square);
                 }
             }
         }
-        if square.rank_mirror() == start_rank {
-            for promotion_piece in [
-                PieceType::Knight,
-                PieceType::Bishop,
-                PieceType::Rook,
-                PieceType::Queen,
-            ] {
+
+        let promotion_pieces = if start_square.rank() == 7 - start_rank {
+            [
+                Some(PieceType::Knight),
+                Some(PieceType::Bishop),
+                Some(PieceType::Rook),
+                Some(PieceType::Queen),
+            ]
+            .as_slice()
+        } else {
+            [None].as_slice()
+        };
+
+        for mv in available_moves {
+            for &promotion_piece in promotion_pieces {
                 pawn_moves.push(Move {
-                    from: square,
-                    to: square.add_rank(self.side_multiplier()),
+                    from: start_square,
+                    to: mv,
                     piece_type: PieceType::Pawn,
                     is_white: self.side_to_move,
-                    promotion_piece: Some(promotion_piece),
+                    promotion_piece,
                     is_castling: CastleMove::None,
                 });
             }
-        } else {
-            // advance pawn by 1
-            pawn_moves.push(Move {
-                from: square,
-                to: square.add_rank(self.side_multiplier()),
-                piece_type: PieceType::Pawn,
-                is_white: self.side_to_move,
-                promotion_piece: None,
-                is_castling: CastleMove::None,
-            });
         }
 
         pawn_moves
@@ -529,21 +512,32 @@ impl Board {
     }
 
     #[must_use]
+    fn queen_moves(&self, start_square: Square) -> Vec<Move> {
+        [
+            self.rook_moves(start_square),
+            self.bishop_moves(start_square),
+        ]
+        .into_iter()
+        .flatten()
+        .map(|mv| Move {
+            piece_type: PieceType::Queen,
+            ..mv
+        })
+        .collect()
+    }
+
+    #[must_use]
     fn get_pseudo_legalmoves(&self) -> Vec<Move> {
         let pseudolegal_moves = Vec::new();
         for piece in self.get_pieces_of_color(self.side_to_move) {
             let moves: Vec<Move> = match piece.piece_type() {
-                PieceType::King => self.king_moves(piece.square()),
-                PieceType::Queen => {
-                    let mut queen_moves = self.rook_moves(piece.square());
-                    queen_moves.append(&mut self.bishop_moves(piece.square()));
-                    queen_moves
-                }
-                PieceType::Rook => self.rook_moves(piece.square()),
-                PieceType::Bishop => self.bishop_moves(piece.square()),
-                PieceType::Knight => self.knight_moves(piece.square()),
-                PieceType::Pawn => self.pawn_moves(piece.square()),
-            };
+                PieceType::King => Self::king_moves,
+                PieceType::Queen => Self::queen_moves,
+                PieceType::Rook => Self::rook_moves,
+                PieceType::Bishop => Self::bishop_moves,
+                PieceType::Knight => Self::knight_moves,
+                PieceType::Pawn => Self::pawn_moves,
+            }(self, piece.square());
         }
         pseudolegal_moves
     }
@@ -1045,7 +1039,13 @@ mod tests {
         //     a b c d e f g h | file
         //     0 1 2 3 4 5 6 7
         let start_square = Square::from_lateral(4, 2);
-        let mut moves = Board::default().bishop_moves(start_square);
+        let mut board = Board::default();
+        board.set_square(Piece {
+            square: Square::from_lateral(7, 5),
+            piece_type: PieceType::Pawn,
+            is_white: false,
+        });
+        let mut moves = board.bishop_moves(start_square);
         moves.sort_by(sort_moves);
 
         let mut correct: [Move; 11] = [
@@ -1288,5 +1288,58 @@ mod tests {
             Square::from_lateral(4, 6).try_add(Square::from_lateral(4, 1)),
             None
         );
+    }
+
+    #[test]
+    fn rook_movement_with_enemies_as_blocker() {
+        // Position: d5
+        // rank
+        // |
+        // 7 8 0 0 0 | 0 0 0 0
+        // 6 7 0 0 0 | 0 0 0 0
+        // 5 6 - - - x - - - -
+        // 4 5 0 0 0 | 0 0 0 0
+        // 3 4 0 0 0 | 0 0 0 0
+        // 2 3 0 0 0 B 0 0 0 0
+        // 1 2 0 0 0 | 0 0 0 0
+        // 0 1 0 0 0 | 0 0 0 0
+        //     a b c d e f g h | file
+        //     0 1 2 3 4 5 6 7
+        let start_square = Square::from_lateral(3, 5);
+        let mut board = Board::default();
+        board.set_square(Piece {
+            square: Square::from_lateral(3, 2),
+            piece_type: PieceType::Pawn,
+            is_white: false,
+        });
+
+        let mut moves: Vec<_> = board.rook_moves(start_square);
+        moves.sort_by(sort_moves);
+
+        let mut expected = [
+            (0, 5),
+            (1, 5),
+            (2, 5),
+            (4, 5),
+            (5, 5),
+            (6, 5),
+            (7, 5),
+            (3, 7),
+            (3, 6),
+            (3, 4),
+            (3, 3),
+            (3, 2),
+        ]
+        .map(|(file, rank)| Move {
+            from: start_square,
+            to: Square::from_lateral(file, rank),
+            piece_type: PieceType::Rook,
+            is_white: false,
+            promotion_piece: None,
+            is_castling: CastleMove::None,
+        });
+        expected.sort_by(sort_moves);
+
+        assert_eq!(moves, moves);
     }
 }

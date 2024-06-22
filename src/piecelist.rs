@@ -76,6 +76,12 @@ impl SquareList {
     }
 }
 
+impl Default for SquareList {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Deref for SquareList {
     type Target = [Square];
 

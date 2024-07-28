@@ -844,6 +844,8 @@ impl<'a> TryFrom<&'a str> for Board {
         }
         // Note: ranks from 8-1 so reverse to get 1-8
         for (rank_position, rank) in piece_position_field.into_iter().rev().enumerate() {
+            let rank_position = u8::try_from(rank_position)
+                .expect("piece_position_field != 8, guarding if failed?");
             let mut file_position = 0;
             for token in rank.chars() {
                 let mut increment = 1;
@@ -855,13 +857,7 @@ impl<'a> TryFrom<&'a str> for Board {
                     'n' => Some(PieceType::Knight),
                     'p' => Some(PieceType::Pawn),
                     num @ '1'..='8' => {
-                        increment = num
-                            .to_digit(10)
-                            .expect("Above check should only allow integers")
-                            .try_into()
-                            .expect(
-                                "Casting a u32 to a u8 which is at maximum 9 should always succeed",
-                            );
+                        increment = num as u8 - b'0'; // works because num < 10
                         None
                     }
                     _ => return Err(Self::Error::InvalidRankIToken(token)),
@@ -870,7 +866,7 @@ impl<'a> TryFrom<&'a str> for Board {
                     #[cfg(test)]
                     println!("chr: {token} | File: {file_position} | Rank: {rank_position} | Is_white: {}", token.is_ascii_uppercase());
                     board.set_square(Piece::new(
-                        Square::from_lateral(file_position, rank_position.try_into().expect("rank_position should be at max 7 and as such never fail to cast to a u8")),
+                        Square::from_lateral(file_position, rank_position),
                         piece_type,
                         token.is_ascii_uppercase(),
                     ));
@@ -912,7 +908,10 @@ impl<'a> TryFrom<&'a str> for Board {
         board.en_passant_square = if en_passant_part == "-" {
             None
         } else {
-            Some(Square::try_from_algebraic(en_passant_part)?)
+            Some(
+                Square::try_from_algebraic(en_passant_part)
+                    .map_err(Self::Error::EnPassantSquareParseError)?,
+            )
         };
 
         board.half_moves = fields[4]
@@ -949,12 +948,6 @@ pub enum FENParseError<'a> {
     HalfMovesIsNotANumber(ParseIntError),
     #[error("Full moves was not able to be parsed to a u32. {0}")]
     FullMovesIsNotANumber(ParseIntError),
-}
-
-impl<'a> From<AlgebraicSqaureConversionError> for FENParseError<'a> {
-    fn from(value: AlgebraicSqaureConversionError) -> Self {
-        FENParseError::EnPassantSquareParseError(value)
-    }
 }
 
 #[cfg(test)]

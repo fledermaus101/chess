@@ -1,5 +1,6 @@
 #![feature(iter_collect_into)]
 #![feature(const_option)]
+#![feature(array_chunks)]
 pub mod piecelist;
 
 use crate::piecelist::SquareList;
@@ -339,6 +340,7 @@ impl Board {
         let mut current_square = start_square;
         while let Ok(sq) = current_square.try_add_tuple((offset_file, offset_rank)) {
             current_square = sq;
+
             let mask = 1 << current_square.0;
             if 0 != self.get_bitboard_of_color(self.side_to_move) & mask {
                 #[cfg(test)]
@@ -527,10 +529,26 @@ impl Board {
     }
 
     #[must_use]
-    fn get_pseudo_legalmoves(&self) -> Vec<Move> {
-        let pseudolegal_moves = Vec::new();
+    fn legal_moves(&self) -> Vec<Move> {
+        // very crude implementation
+        let mut pseudo = self.legal_moves_pseudo();
+        let mut copy = *self;
+        copy.side_to_move = !copy.side_to_move;
+        let other_pseudo: Vec<_> = copy
+            .legal_moves_pseudo()
+            .into_iter()
+            .map(|x| x.to)
+            .collect();
+        pseudo.retain(|x| !other_pseudo.contains(&x.to));
+
+        pseudo
+    }
+
+    #[must_use]
+    fn legal_moves_pseudo(&self) -> Vec<Move> {
+        let mut pseudolegal_moves = Vec::new();
         for piece in self.get_pieces_of_color(self.side_to_move) {
-            let moves: Vec<Move> = match piece.piece_type() {
+            let mut moves: Vec<Move> = match piece.piece_type() {
                 PieceType::King => Self::king_moves,
                 PieceType::Queen => Self::queen_moves,
                 PieceType::Rook => Self::rook_moves,
@@ -538,6 +556,8 @@ impl Board {
                 PieceType::Knight => Self::knight_moves,
                 PieceType::Pawn => Self::pawn_moves,
             }(self, piece.square());
+
+            pseudolegal_moves.append(&mut moves);
         }
         pseudolegal_moves
     }
@@ -708,19 +728,6 @@ pub enum PieceType {
     Pawn,
 }
 
-impl PieceType {
-    const fn algebraic_name(self) -> &'static str {
-        match self {
-            Self::King => "K",
-            Self::Queen => "Q",
-            Self::Rook => "R",
-            Self::Bishop => "B",
-            Self::Knight => "N",
-            Self::Pawn => "",
-        }
-    }
-}
-
 impl Display for PieceType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let name = match self {
@@ -744,7 +751,17 @@ pub struct Piece {
 
 impl Display for Piece {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut piece_name = self.piece_type().algebraic_name().to_string();
+        let mut piece_name = {
+            match self.piece_type() {
+                PieceType::King => "K",
+                PieceType::Queen => "Q",
+                PieceType::Rook => "R",
+                PieceType::Bishop => "B",
+                PieceType::Knight => "N",
+                PieceType::Pawn => "",
+            }
+        }
+        .to_string();
         if !self.is_white() {
             piece_name.make_ascii_lowercase();
         }
@@ -786,6 +803,24 @@ impl Piece {
             PieceType::Bishop => todo!(),
             PieceType::Knight => todo!(),
             PieceType::Pawn => todo!(),
+        }
+    }
+
+    #[must_use]
+    pub const fn piece_letter(&self) -> char {
+        let name = match self.piece_type() {
+            PieceType::King => 'K',
+            PieceType::Queen => 'Q',
+            PieceType::Rook => 'R',
+            PieceType::Bishop => 'B',
+            PieceType::Knight => 'N',
+            PieceType::Pawn => 'P',
+        };
+
+        if self.is_white {
+            name
+        } else {
+            name.to_ascii_lowercase()
         }
     }
 }
@@ -926,6 +961,9 @@ impl<'a> From<AlgebraicSqaureConversionError> for FENParseError<'a> {
 mod tests {
     use std::cmp::Ordering;
 
+    use colored::Colorize;
+    use random_color::{Luminosity, RandomColor};
+
     #[allow(unused_imports)]
     use super::*;
 
@@ -1036,7 +1074,7 @@ mod tests {
         // 2 3 0 0 0 0 x 0 0 0
         // 1 2 0 0 0 / 0 \ 0 0
         // 0 1 0 0 / 0 0 0 \ 0
-        //     a b c d e f g h | file
+        //     a b c d e f g h - file
         //     0 1 2 3 4 5 6 7
         let start_square = Square::from_lateral(4, 2);
         let mut board = Board::default();
@@ -1091,7 +1129,7 @@ mod tests {
         // 2 3 - - - - x - - -
         // 1 2 0 0 0 0 | 0 0 0
         // 0 1 0 0 0 0 | 0 0 0
-        //     a b c d e f g h | file
+        //     a b c d e f g h - file
         //     0 1 2 3 4 5 6 7
         let start_square = Square::from_lateral(4, 2);
         let mut moves = Board::default().rook_moves(start_square);
@@ -1140,10 +1178,10 @@ mod tests {
         // 5 6 0 0 0 0 0 0 0 0
         // 4 5 0 0 0 x 0 x 0 0
         // 3 4 0 0 x 0 0 0 x 0
-        // 2 3 0 0 0 0 k 0 0 0
+        // 2 3 0 0 0 0 K 0 0 0
         // 1 2 0 0 x 0 0 0 x 0
         // 0 1 0 0 0 x 0 x 0 0
-        //     a b c d e f g h | file
+        //     a b c d e f g h - file
         //     0 1 2 3 4 5 6 7
         let start_square = Square::from_lateral(4, 2);
         let mut moves = Board::default().knight_moves(start_square);
@@ -1183,9 +1221,9 @@ mod tests {
         // 4 5 0 0 0 0 0 0 0 0
         // 3 4 0 0 0 0 x 0 0 0
         // 2 3 0 0 0 0 x k 0 0
-        // 1 2 0 0 0 0 p 0 0 0
+        // 1 2 0 0 0 0 P 0 0 0
         // 0 1 0 0 0 0 0 0 0 0
-        //     a b c d e f g h | file
+        //     a b c d e f g h - file
         //     0 1 2 3 4 5 6 7
         let mut board = Board::default();
         board.set_square(Piece {
@@ -1219,11 +1257,11 @@ mod tests {
         // 6 7 0 0 0 0 0 0 0 0
         // 5 6 0 0 0 0 0 0 0 0
         // 4 5 0 0 0 0 0 0 0 0
-        // 3 4 0 0 0 0 w b 0 0
+        // 3 4 0 0 0 0 P p 0 0
         // 2 3 0 0 0 0 x x 0 0
         // 1 2 0 0 0 0 0 0 0 0
         // 0 1 0 0 0 0 0 0 0 0
-        //     a b c d e f g h | file
+        //     a b c d e f g h - file
         //     0 1 2 3 4 5 6 7
         let board: Board = "8/8/8/8/4Pp2/8/8/8 b - e3 0 1"
             .try_into()
@@ -1301,9 +1339,9 @@ mod tests {
         // 4 5 0 0 0 | 0 0 0 0
         // 3 4 0 0 0 | 0 0 0 0
         // 2 3 0 0 0 B 0 0 0 0
-        // 1 2 0 0 0 | 0 0 0 0
-        // 0 1 0 0 0 | 0 0 0 0
-        //     a b c d e f g h | file
+        // 1 2 0 0 0 0 0 0 0 0
+        // 0 1 0 0 0 0 0 0 0 0
+        //     a b c d e f g h - file
         //     0 1 2 3 4 5 6 7
         let start_square = Square::from_lateral(3, 5);
         let mut board = Board::default();
@@ -1313,8 +1351,8 @@ mod tests {
             is_white: false,
         });
 
-        let mut moves: Vec<_> = board.rook_moves(start_square);
-        moves.sort_by(sort_moves);
+        let mut actual: Vec<_> = board.rook_moves(start_square);
+        actual.sort_by(sort_moves);
 
         let mut expected = [
             (0, 5),
@@ -1334,12 +1372,253 @@ mod tests {
             from: start_square,
             to: Square::from_lateral(file, rank),
             piece_type: PieceType::Rook,
-            is_white: false,
+            is_white: true,
             promotion_piece: None,
             is_castling: CastleMove::None,
         });
         expected.sort_by(sort_moves);
 
-        assert_eq!(moves, moves);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn legal_moves_kings_with_checks() {
+        // rank
+        // |
+        // 7 8 - r k 0 0 0 0 0
+        // 6 7 0 | 0 0 0 0 0 0
+        // 5 6 0 | 0 0 0 0 0 0
+        // 4 5 0 | 0 0 0 0 0 0
+        // 3 4 0 | 0 0 0 0 0 0
+        // 2 3 0 | 0 0 0 0 0 0
+        // 1 2 0 | 0 0 0 0 0 0
+        // 0 1 K | 0 0 0 0 0 0
+        //     a b c d e f g h - file
+        //     0 1 2 3 4 5 6 7
+        let board = Board::try_from("1rk5/8/8/8/8/8/8/K7 w - - 0 1").expect("Should be valid");
+
+        let mut expected = [Move {
+            from: Square::from_lateral(0, 0),
+            to: Square::from_lateral(0, 1),
+            piece_type: PieceType::King,
+            is_white: true,
+            promotion_piece: None,
+            is_castling: CastleMove::None,
+        }];
+        expected.sort_by(sort_moves);
+
+        let mut actual = board.legal_moves();
+        actual.sort_by(sort_moves);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn legal_moves_kings_and_pawn_with_checks() {
+        // rank
+        // |
+        // 7 8 0 r k 0 0 0 0 0
+        // 6 7 0 | 0 0 0 0 0 0
+        // 5 6 0 | 0 0 0 0 0 0
+        // 4 5 0 | 0 0 0 0 0 0
+        // 3 4 0 | x 0 0 0 0 0
+        // 2 3 0 | P 0 0 0 0 0
+        // 1 2 x | 0 0 0 0 0 0
+        // 0 1 K | 0 0 0 0 0 0
+        //     a b c d e f g h - file
+        //     0 1 2 3 4 5 6 7
+        let board = Board::try_from("1rk5/8/8/8/8/2P5/8/K7 w - - 0 1").expect("Should be valid");
+        let mut expected = [
+            Move {
+                from: Square::from_lateral(0, 0),
+                to: Square::from_lateral(0, 1),
+                piece_type: PieceType::King,
+                is_white: true,
+                promotion_piece: None,
+                is_castling: CastleMove::None,
+            },
+            Move {
+                from: Square::from_lateral(2, 2),
+                to: Square::from_lateral(2, 3),
+                piece_type: PieceType::Pawn,
+                is_white: true,
+                promotion_piece: None,
+                is_castling: CastleMove::None,
+            },
+        ];
+        expected.sort_by(sort_moves);
+
+        let mut actual = board.legal_moves();
+        actual.sort_by(sort_moves);
+
+        print_moves(&board, &actual);
+        print_moves(&board, &expected);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn legal_moves_bishop_pin_with_checks() {
+        // rank
+        // |
+        // 7 8 0 r k 0 0 0 0 0
+        // 6 7 0 | 0 0 0 0 0 0
+        // 5 6 0 | 0 0 0 0 0 0
+        // 4 5 0 | 0 0 0 0 0 0
+        // 3 4 0 | x b 0 0 0 0
+        // 2 3 0 | P 0 0 0 0 0
+        // 1 2 0 | 0 0 0 0 0 0
+        // 0 1 K | 0 0 0 0 0 0
+        //     a b c d e f g h - file
+        //     0 1 2 3 4 5 6 7
+        let board = Board::try_from("1rk5/8/8/8/3b4/2P5/8/K7 w - - 0 1").expect("Should be valid");
+        let mut expected = [
+            Move {
+                from: Square::from_lateral(0, 0),
+                to: Square::from_lateral(0, 1),
+                piece_type: PieceType::King,
+                is_white: true,
+                promotion_piece: None,
+                is_castling: CastleMove::None,
+            },
+            Move {
+                from: Square::from_lateral(2, 2),
+                to: Square::from_lateral(2, 3),
+                piece_type: PieceType::Pawn,
+                is_white: true,
+                promotion_piece: None,
+                is_castling: CastleMove::None,
+            },
+            Move {
+                from: Square::from_lateral(2, 2),
+                to: Square::from_lateral(3, 3),
+                piece_type: PieceType::Pawn,
+                is_white: true,
+                promotion_piece: None,
+                is_castling: CastleMove::None,
+            },
+        ];
+        expected.sort_by(sort_moves);
+
+        let mut actual = board.legal_moves();
+        actual.sort_by(sort_moves);
+
+        print_moves(&board, &actual);
+        print_moves(&board, &expected);
+        assert_eq!(actual, expected);
+    }
+
+    #[allow(dead_code)]
+    fn print_moves(piece_board: &Board, moves: &[Move]) {
+        // This could be done, but it would need cleverness beyond the scope of a debugging
+        // utility.
+        // #[derive(Debug)]
+        // enum Direction {
+        //     Horizontal,     // -
+        //     Vertical,       // |
+        //     DiagonalLeft,   // ⟍
+        //     DiagonalRight,  // ⟋
+        // }                   // ⤫
+        //                     // +
+        #[derive(Clone, Copy)]
+        struct SquareDrawing {
+            symbol: char,
+            foreground: [u8; 3],
+            background: Option<[u8; 3]>,
+        }
+
+        impl Default for SquareDrawing {
+            fn default() -> Self {
+                Self {
+                    symbol: '0',
+                    foreground: [80, 80, 80],
+                    background: None,
+                }
+            }
+        }
+
+        let mut drawing_board: [Option<SquareDrawing>; 64] = [None; 64];
+
+        for m in moves {
+            #[allow(clippy::match_bool)]
+            let mut rgb = RandomColor::new()
+                .seed(u32::from(m.from.0))
+                .luminosity(match m.is_white {
+                    true => Luminosity::Light,
+                    false => Luminosity::Dark,
+                })
+                .to_rgb_array();
+
+            // average the colors column
+            // this is wildly unproportional if there are more than 2 colors
+            if let Some(other) =
+                drawing_board[m.to.0 as usize].and_then(|sq_drawing| sq_drawing.background)
+            {
+                rgb = [(rgb[0], other[0]), (rgb[1], other[1]), (rgb[2], other[2])]
+                    .map(|(a, b)| (a + b) / 2);
+            }
+
+            let square_drawing = SquareDrawing {
+                symbol: 'x',
+                background: Some(rgb),
+                ..Default::default()
+            };
+
+            drawing_board[m.to.0 as usize] = Some(square_drawing);
+        }
+
+        for piece in piece_board.get_all_pieces() {
+            let mut square_drawing = drawing_board[piece.square.0 as usize].unwrap_or_default();
+
+            #[allow(clippy::match_bool)]
+            let rgb = RandomColor::new()
+                .seed(u32::from(piece.square().0))
+                .luminosity(match piece.is_white() {
+                    true => Luminosity::Light,
+                    false => Luminosity::Dark,
+                })
+                .to_rgb_array();
+
+            square_drawing = SquareDrawing {
+                foreground: rgb,
+                symbol: piece.piece_letter(),
+                ..square_drawing
+            };
+
+            drawing_board[piece.square.0 as usize] = Some(square_drawing);
+        }
+        let drawing_board = drawing_board.map(Option::unwrap_or_default);
+
+        // rank
+        // |
+        // 7 8 - r k 0 0 0 0 0
+        // 6 7 0 | 0 0 0 0 0 0
+        // 5 6 0 | 0 0 0 0 0 0
+        // 4 5 0 | 0 0 0 0 0 0
+        // 3 4 0 | 0 b 0 0 0 0
+        // 2 3 0 | P 0 0 0 0 0
+        // 1 2 0 | 0 0 0 0 0 0
+        // 0 1 K | 0 0 0 0 0 0
+        //     a b c d e f g h - file
+        //     0 1 2 3 4 5 6 7
+        println!("rank");
+        println!("|");
+        for (rank_index, row) in drawing_board.array_chunks::<8>().enumerate().rev() {
+            print!("{} {}", rank_index, rank_index + 1); // int -> char
+
+            for square_drawing in row {
+                let [r, g, b] = square_drawing.foreground;
+                let mut colored_string = square_drawing.symbol.to_string().truecolor(r, g, b);
+
+                if let Some(background) = square_drawing.background {
+                    let [r, g, b] = background;
+                    colored_string = colored_string.on_truecolor(r, g, b);
+                }
+                print!(" {colored_string}");
+            }
+
+            println!();
+        }
+        println!("    a b c d e f g h");
+        println!("    0 1 2 3 4 5 6 7 - file");
     }
 }

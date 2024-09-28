@@ -1506,9 +1506,9 @@ mod tests {
         // 6 7 0 | 0 0 0 0 0 0
         // 5 6 0 | 0 0 0 0 0 0
         // 4 5 0 | 0 0 0 0 0 0
-        // 3 4 0 | x b 0 0 0 0
+        // 3 4 0 | 0 b 0 0 0 0
         // 2 3 0 | P 0 0 0 0 0
-        // 1 2 0 | 0 0 0 0 0 0
+        // 1 2 x | 0 0 0 0 0 0
         // 0 1 K | 0 0 0 0 0 0
         //     a b c d e f g h - file
         //     0 1 2 3 4 5 6 7
@@ -1518,14 +1518,6 @@ mod tests {
                 from: Square::from_lateral(0, 0),
                 to: Square::from_lateral(0, 1),
                 piece_type: PieceType::King,
-                is_white: true,
-                promotion_piece: None,
-                is_castling: CastleMove::None,
-            },
-            Move {
-                from: Square::from_lateral(2, 2),
-                to: Square::from_lateral(2, 3),
-                piece_type: PieceType::Pawn,
                 is_white: true,
                 promotion_piece: None,
                 is_castling: CastleMove::None,
@@ -1546,6 +1538,42 @@ mod tests {
 
         print_moves(&board, &actual);
         print_moves(&board, &expected);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn pinned_bishop_with_rook() {
+        // to move: black
+        // rank
+        // |
+        // 7 8 0 0 0 0 x k x 0
+        // 6 7 0 0 0 0 x b x 0
+        // 5 6 0 0 0 0 0 | 0 0
+        // 4 5 0 0 0 0 0 | 0 0
+        // 3 4 0 0 0 0 0 | 0 0
+        // 2 3 0 0 0 0 0 | 0 0
+        // 1 2 0 0 0 0 0 | 0 0
+        // 0 1 0 0 0 0 K R 0 0
+        //     a b c d e f g h - file
+        //     0 1 2 3 4 5 6 7
+        let board = Board::try_from("5k2/5b2/8/8/8/8/8/4KR2 b - - 0 1").expect("Should be valid");
+        let mut expected = [(4, 6), (4, 7), (6, 6), (6, 7)].map(|(file, rank)| Move {
+            from: Square::from_lateral(5, 7),
+            to: Square::from_lateral(file, rank),
+            piece_type: PieceType::King,
+            is_white: false,
+            promotion_piece: None,
+            is_castling: CastleMove::None,
+        });
+        expected.sort_by(sort_moves);
+
+        let mut actual = board.legal_moves();
+        actual.sort_by(sort_moves);
+
+        print_moves(&board, &actual);
+        print_moves(&board, &expected);
+
+        println!("{:?}", expected.to_vec().retain(|m| !actual.contains(m)));
         assert_eq!(actual, expected);
     }
 

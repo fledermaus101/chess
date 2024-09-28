@@ -64,7 +64,7 @@ pub struct Board {
     squarelists: [SquareList; PIECE_TYPE_VARIANTS.len() * 2],
     side_to_move: bool,
     half_moves: u8, // should never be larger than 100, as that would be a draw
-    full_moves: u32,
+    // full_moves: u32,
     en_passant_square: Option<Square>,
     castling_rights: [bool; 4], // white kingside, white queenside, black kingside, black queenside
 }
@@ -749,7 +749,7 @@ impl Default for Board {
             squarelists: [SquareList::new(); 12],
             side_to_move: true,
             half_moves: 0,
-            full_moves: 0,
+            // full_moves: 0,
             en_passant_square: None,
             castling_rights: [true; 4],
         }
@@ -967,9 +967,9 @@ impl<'a> TryFrom<&'a str> for Board {
             .parse()
             .map_err(Self::Error::HalfMovesIsNotANumber)?;
 
-        board.full_moves = fields[4]
-            .parse()
-            .map_err(Self::Error::FullMovesIsNotANumber)?;
+        // board.full_moves = fields[4]
+        //     .parse()
+        //     .map_err(Self::Error::FullMovesIsNotANumber)?;
 
         Ok(board)
     }

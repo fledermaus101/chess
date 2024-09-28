@@ -548,15 +548,45 @@ impl Board {
     #[must_use]
     fn legal_moves(&self) -> Vec<Move> {
         // very crude implementation
+        // four (five) scenarios
+        // 1. Squares the king can move to are under attack => remove
+        // 2. Pieces are absolutely pinned to the king => restrict mobility
+        // 3. King is in check => restrict all moves to
+        //      1. Single check => only allow (filtered) king moves + blocking with pieces
+        //      2. Double check => only allow (filtered) king moves
+        // Else: no special handling whatsoever => return legal_moves_pseudo
         let mut pseudo = self.legal_moves_pseudo();
-        let mut copy = *self;
-        copy.side_to_move = !copy.side_to_move;
+        let copy = Self {
+            side_to_move: !self.side_to_move,
+            ..*self
+        };
         let other_pseudo: Vec<_> = copy
             .legal_moves_pseudo()
             .into_iter()
             .map(|x| x.to)
             .collect();
-        pseudo.retain(|x| !other_pseudo.contains(&x.to));
+        // remove moves made by the king to squares attacked by opponent
+        pseudo.retain(|x| !(other_pseudo.contains(&x.to) && x.piece_type == PieceType::King));
+
+        let king_square = self
+            .get_pieces_of_color(self.side_to_move)
+            .into_iter()
+            .find(|piece| piece.piece_type == PieceType::King)
+            .expect("A board should always contain a king")
+            .square();
+        #[cfg(test)]
+        println!("King is on {king_square}");
+
+        // remove moves that put our king into check
+        pseudo.retain(|x| {
+            let mut copy = *self;
+            copy.make_move(*x);
+
+            !copy
+                .legal_moves_pseudo()
+                .into_iter()
+                .any(|m| m.to == king_square)
+        });
 
         pseudo
     }
@@ -581,7 +611,9 @@ impl Board {
 
     fn make_move(&mut self, mv: Move) {
         self.clear_square(mv.from);
+        self.clear_square(mv.to);
         self.set_square(mv.piece());
+        self.side_to_move = !self.side_to_move;
     }
 
     #[must_use]

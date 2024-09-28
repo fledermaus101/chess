@@ -13,7 +13,7 @@ use std::{
 
 use thiserror::Error;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Move {
     from: Square,
     to: Square,
@@ -21,6 +21,23 @@ pub struct Move {
     is_white: bool,
     promotion_piece: Option<PieceType>,
     is_castling: CastleMove,
+}
+
+impl Debug for Move {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Move {{{} -> {}, promotion_piece: {:?}, is_castling: {:?}}}",
+            Piece {
+                square: self.from,
+                piece_type: self.piece_type,
+                is_white: self.is_white
+            },
+            self.to,
+            self.promotion_piece,
+            self.is_castling
+        )
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

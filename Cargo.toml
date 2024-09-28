@@ -11,7 +11,7 @@ thiserror = "1.0.61"
 [dev-dependencies]
 colored = "2.1.0"
 criterion = "0.5"
-random_color = "0.8.0"
+random_color = "1.0.0"
 
 [[bench]]
 name = "my_benchmark"

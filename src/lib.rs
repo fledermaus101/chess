@@ -955,7 +955,7 @@ mod tests {
     use std::cmp::Ordering;
 
     use colored::Colorize;
-    use random_color::{Luminosity, RandomColor};
+    use random_color::{options::Luminosity, RandomColor};
 
     #[allow(unused_imports)]
     use super::*;
@@ -1547,7 +1547,7 @@ mod tests {
                 drawing_board[m.to.0 as usize].and_then(|sq_drawing| sq_drawing.background)
             {
                 rgb = [(rgb[0], other[0]), (rgb[1], other[1]), (rgb[2], other[2])]
-                    .map(|(a, b)| (a + b) / 2);
+                    .map(|(a, b)| a / 2 + b / 2);
             }
 
             let square_drawing = SquareDrawing {
@@ -1596,7 +1596,7 @@ mod tests {
         println!("rank");
         println!("|");
         for (rank_index, row) in drawing_board.array_chunks::<8>().enumerate().rev() {
-            print!("{} {}", rank_index, rank_index + 1); // int -> char
+            print!("{} {}", rank_index, rank_index + 1);
 
             for square_drawing in row {
                 let [r, g, b] = square_drawing.foreground;

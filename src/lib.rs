@@ -60,7 +60,7 @@ impl Move {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Board {
-    bit_boards: [u64; 12],
+    bitboards: [u64; 12],
     squarelists: [SquareList; PIECE_TYPE_VARIANTS.len() * 2],
     side_to_move: bool,
     half_moves: u8, // should never be larger than 100, as that would be a draw
@@ -360,14 +360,10 @@ impl Board {
 
             let mask = 1 << current_square.0;
             if 0 != self.get_bitboard_of_color(self.side_to_move) & mask {
-                #[cfg(test)]
-                println!("Friendly at {current_square}");
                 break;
             }
             moves.push(current_square);
             if 0 != self.get_bitboard_of_color(!self.side_to_move) & mask {
-                #[cfg(test)]
-                println!("Enemy at {current_square}");
                 break;
             }
         }
@@ -420,6 +416,7 @@ impl Board {
         ]
         .into_iter()
         .filter_map(|offset| start_square.try_add_tuple(offset).ok())
+        .filter(|to_square| !self.is_occupied_by_friendly(*to_square))
         .map(|to_square| Move {
             from: start_square,
             to: to_square,
@@ -434,23 +431,30 @@ impl Board {
     #[must_use]
     fn pawn_moves(&self, start_square: Square) -> Vec<Move> {
         let mut pawn_moves = Vec::with_capacity(12);
-        // i.e. in which directions can the pawn move?
         let mut available_moves = Vec::with_capacity(4);
 
         let start_rank = if self.side_to_move { 1 } else { 6 };
-        // double push pawns
-        if start_square.rank() == start_rank {
-            available_moves.push(start_square.add_rank(2 * self.side_multiplier()));
+        // single push
+        let square_push_single = start_square.add_rank(self.side_multiplier());
+        if 0 == self.get_bitboard_all_pieces() & 1 << square_push_single.0 {
+            available_moves.push(square_push_single);
+
+            // double push pawns
+            let square_push_double = start_square.add_rank(2 * self.side_multiplier());
+            if start_square.rank() == start_rank
+                && 0 == self.get_bitboard_all_pieces() & 1 << square_push_double.0
+            {
+                available_moves.push(square_push_double);
+            }
         }
 
-        let mut bitboard = self.get_bitboard_of_color(!self.side_to_move)
+        let mask_en_passant = self.get_bitboard_of_color(!self.side_to_move)
             // add the en_passant_square as a valid capture target
             | self.en_passant_square.map_or(0, |sq| 1 << sq.0);
-        available_moves.push(start_square.add_rank(self.side_multiplier()));
         for offset in [-1, 1] {
             // diagonal capture
             if let Ok(to_square) = start_square.try_add_tuple((offset, self.side_multiplier())) {
-                if (1 << to_square.0 & bitboard) != 0 {
+                if (1 << to_square.0 & mask_en_passant) != 0 {
                     available_moves.push(to_square);
                 }
             }
@@ -498,6 +502,7 @@ impl Board {
         ]
         .into_iter()
         .filter_map(|offset| square.try_add_tuple(offset).ok())
+        .filter(|sq| !self.is_occupied_by_friendly(*sq))
         .map(|square_to| Move {
             from: square,
             to: square_to,
@@ -507,7 +512,14 @@ impl Board {
             is_castling: CastleMove::None,
         })
         .collect();
-        if self.has_kingside_castle_right() {
+
+        let bitboard = if self.side_to_move {
+            self.get_bitboard_all_pieces()
+        } else {
+            self.get_bitboard_all_pieces().reverse_bits()
+        };
+
+        if self.has_kingside_castle_right() && 0 == bitboard & 0b0000_0110 {
             king_moves.push(Move {
                 from: square,
                 to: square.add_file(2),
@@ -517,7 +529,7 @@ impl Board {
                 is_castling: CastleMove::KingSide,
             });
         }
-        if self.has_queenside_castle_right() {
+        if self.has_queenside_castle_right() && 0 == bitboard & 0b0000_0111 {
             king_moves.push(Move {
                 from: square,
                 to: square.add_file(-2),
@@ -555,6 +567,7 @@ impl Board {
         //      1. Single check => only allow (filtered) king moves + blocking with pieces
         //      2. Double check => only allow (filtered) king moves
         // Else: no special handling whatsoever => return legal_moves_pseudo
+        // TODO: castling
         let mut pseudo = self.legal_moves_pseudo();
         let copy = Self {
             side_to_move: !self.side_to_move,
@@ -610,6 +623,10 @@ impl Board {
     }
 
     fn make_move(&mut self, mv: Move) {
+        //TODO: half move clock (captures, castling)
+        //TODO: castling rights
+        //TODO: castling in general (rook must be moved)
+        //TODO: updating en passant + pawn taking the piece
         self.clear_square(mv.from);
         self.clear_square(mv.to);
         self.set_square(mv.piece());
@@ -625,23 +642,28 @@ impl Board {
         }
     }
 
+    #[must_use]
+    const fn is_occupied_by_friendly(&self, square: Square) -> bool {
+        0 != self.get_bitboard_of_color(self.side_to_move) & (1 << square.0)
+    }
+
     fn set_square(&mut self, piece: Piece) {
         let index = convert_piece_to_index(piece.piece_type(), piece.is_white());
-        self.bit_boards[index] |= 1 << piece.square().0;
+        self.bitboards[index] |= 1 << piece.square().0;
 
         self.squarelists[index].add(piece.square());
     }
 
     fn clear_square_of_piece(&mut self, piece: Piece) {
         let index = convert_piece_to_index(piece.piece_type(), piece.is_white());
-        self.bit_boards[index] &= !(1 << piece.square().0);
+        self.bitboards[index] &= !(1 << piece.square().0);
 
         self.squarelists[index].remove(piece.square());
     }
 
     fn clear_square(&mut self, square: Square) {
-        for bit_board in &mut self.bit_boards {
-            *bit_board &= !(1 << square.0);
+        for bitboard in &mut self.bitboards {
+            *bitboard &= !(1 << square.0);
         }
         for squarelist in &mut self.squarelists {
             squarelist.remove(square);
@@ -650,22 +672,22 @@ impl Board {
 
     #[must_use]
     pub const fn get_bitboard(&self, piece_type: PieceType, is_white: bool) -> u64 {
-        self.bit_boards[convert_piece_to_index(piece_type, is_white)]
+        self.bitboards[convert_piece_to_index(piece_type, is_white)]
     }
 
     #[must_use]
     pub const fn get_bitboard_of_color(&self, is_white: bool) -> u64 {
         let offset = !is_white as usize * 6;
-        let bit_boards = self.bit_boards;
-        // bit_boards[offset..6 + offset] // can't use because of const
+        let bitboards = self.bitboards;
+        // bitboards[offset..6 + offset] // can't use because of const
         //     .iter()
         //     .fold(0, |acc, e| acc | e)
-        bit_boards[offset]
-            | bit_boards[1 + offset]
-            | bit_boards[2 + offset]
-            | bit_boards[3 + offset]
-            | bit_boards[4 + offset]
-            | bit_boards[5 + offset]
+        bitboards[offset]
+            | bitboards[1 + offset]
+            | bitboards[2 + offset]
+            | bitboards[3 + offset]
+            | bitboards[4 + offset]
+            | bitboards[5 + offset]
     }
 
     #[must_use]
@@ -745,7 +767,7 @@ pub const fn get_index_color(index: usize) -> bool {
 impl Default for Board {
     fn default() -> Self {
         Self {
-            bit_boards: [0; 12],
+            bitboards: [0; 12],
             squarelists: [SquareList::new(); 12],
             side_to_move: true,
             half_moves: 0,
@@ -1690,5 +1712,45 @@ mod tests {
         }
         println!("    a b c d e f g h");
         println!("    0 1 2 3 4 5 6 7 - file");
+    }
+
+    #[test]
+    #[ignore] // makes testing slow
+    fn perft_starting_position() {
+        let mut board = Board::try_from("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+            .expect("Should be valid");
+        let correct = [1, 20, 400, 8902, 197281];
+        for (depth, n_nodes) in correct.into_iter().enumerate() {
+            assert_eq!(n_nodes, perft(&mut board, depth));
+        }
+    }
+
+    fn perft(board: &mut Board, depth: usize) -> u32 {
+        if depth == 0 {
+            return 1;
+        }
+
+        let mut ncount = 0;
+        let moves = board.legal_moves();
+        print_moves(board, &moves);
+        for m in moves {
+            let mut board_tmp = board.clone();
+            board_tmp.make_move(m);
+            ncount += perft(&mut board_tmp, depth - 1);
+        }
+        ncount
+    }
+
+    #[test]
+    fn is_occupied_by_friendly_test() {
+        let mut board = Board::default();
+        let square = Square::from_lateral(7, 3);
+        board.set_square(Piece {
+            square,
+            piece_type: PieceType::Bishop,
+            is_white: true,
+        });
+
+        assert!(board.is_occupied_by_friendly(square));
     }
 }

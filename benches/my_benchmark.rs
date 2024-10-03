@@ -1,4 +1,4 @@
-use chess::piecelist::SquareList;
+use chess::squarelist::SquareList;
 use chess::Square;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 

@@ -5,12 +5,12 @@ use std::{
 
 use crate::{Piece, PieceType, Square};
 
-pub const PIECE_LIST_SIZE: usize = 10;
+pub const SQUARE_LIST_SIZE: usize = 10;
 
 /// Invariant: All elements up to `size` must be initialized
 #[derive(Debug, Clone, Copy)]
 pub struct SquareList {
-    list: [Square; PIECE_LIST_SIZE],
+    list: [Square; SQUARE_LIST_SIZE],
     size: usize,
 }
 
@@ -19,8 +19,7 @@ impl SquareList {
     #[allow(clippy::missing_panics_doc)]
     pub const fn new() -> Self {
         Self {
-            list: [Square::try_from_square(0).expect("0 should be a valid square");
-                PIECE_LIST_SIZE],
+            list: [Square::from_square(0); SQUARE_LIST_SIZE],
             size: 0,
         }
     }
@@ -35,8 +34,8 @@ impl SquareList {
             return;
         }
         assert!(
-            self.size != PIECE_LIST_SIZE,
-            "Tried to add a square to a InternalPieceList over the allowed defined maximum PIECE_LIST_SIZE ({PIECE_LIST_SIZE})"
+            self.size != SQUARE_LIST_SIZE,
+            "Tried to add a square to a SquareList over the allowed defined maximum SQUARE_LIST_SIZE ({SQUARE_LIST_SIZE})"
         );
         self.size += 1;
         self.list[self.size - 1] = sq;
@@ -109,7 +108,7 @@ pub struct PieceListIterator {
     r_index: usize,
     piece_type: PieceType,
     is_white: bool,
-    list: [Square; PIECE_LIST_SIZE],
+    list: [Square; SQUARE_LIST_SIZE],
 }
 
 impl ExactSizeIterator for PieceListIterator {}
@@ -158,42 +157,41 @@ mod tests {
 
     #[test]
     #[should_panic(
-        expected = "Tried to add a square to a InternalPieceList over the allowed defined maximum PIECE_LIST_SIZE"
+        expected = "Tried to add a square to a SquareList over the allowed defined maximum SQUARE_LIST_SIZE"
     )]
-    fn piecelist_panic_on_too_many_elements() {
-        let mut piecelist = SquareList::new();
+    fn squarelist_panic_on_too_many_elements() {
+        let mut squarelist = SquareList::new();
         for i in
-            0..=u8::try_from(PIECE_LIST_SIZE).expect("PIECE_LIST_SIZE should not exceed u8::MAX")
+            0..=u8::try_from(SQUARE_LIST_SIZE).expect("SQUARE_LIST_SIZE should not exceed u8::MAX")
         {
-            piecelist.add(Square::from_square(i));
+            squarelist.add(Square::from_square(i));
         }
     }
 
     #[test]
-    fn piecelist_add_3_remove_1() {
-        let mut piecelist = SquareList::new();
-        piecelist.add(Square::from_lateral(2, 3)); // c4
-        piecelist.add(Square::from_lateral(1, 3)); // b4
-        piecelist.add(Square::from_lateral(3, 3)); // d4
+    fn squarelist_add_3_remove_1() {
+        let mut squarelist = SquareList::new();
+        squarelist.add(Square::from_lateral(2, 3)); // c4
+        squarelist.add(Square::from_lateral(1, 3)); // b4
+        squarelist.add(Square::from_lateral(3, 3)); // d4
 
-        assert_eq!(piecelist[0], Square::from_lateral(2, 3));
-        assert_eq!(piecelist[1], Square::from_lateral(1, 3));
-        assert_eq!(piecelist[2], Square::from_lateral(3, 3));
+        assert_eq!(squarelist[0], Square::from_lateral(2, 3));
+        assert_eq!(squarelist[1], Square::from_lateral(1, 3));
+        assert_eq!(squarelist[2], Square::from_lateral(3, 3));
 
-        piecelist.remove(Square::from_lateral(1, 3));
-        assert_eq!(piecelist[0], Square::from_lateral(2, 3));
-        assert_eq!(piecelist[1], Square::from_lateral(3, 3));
+        squarelist.remove(Square::from_lateral(1, 3));
+        assert_eq!(squarelist[0], Square::from_lateral(2, 3));
+        assert_eq!(squarelist[1], Square::from_lateral(3, 3));
     }
 
     #[test]
-    fn piecelist_exactsizeiterator() {
-        let piecelist = SquareList {
-            // Can't use MaybeUninit::zeroed() because Square isn't repr(transparent)
-            list: [Square::from_square(0); PIECE_LIST_SIZE],
+    fn squarelist_exactsizeiterator() {
+        let squarelist = SquareList {
+            list: [Square::from_square(0); SQUARE_LIST_SIZE],
             size: 3,
         };
 
-        let mut iter = piecelist.iter();
+        let mut iter = squarelist.iter();
         assert_eq!(iter.len(), iter.size_hint().0);
         assert_eq!(Some(iter.len()), iter.size_hint().1);
         assert_eq!(iter.len(), 3);
@@ -206,7 +204,7 @@ mod tests {
     }
 
     #[test]
-    fn piecelist_doubleendediterator() {
+    fn squarelist_doubleendediterator() {
         let mut squarelist = SquareList::new();
         for i in 0..=3u8 {
             squarelist.add(Square::from_square(i));
@@ -222,13 +220,13 @@ mod tests {
     }
 
     #[test]
-    fn piecelist_contains() {
-        let mut piecelist = SquareList::new();
+    fn squarelist_contains() {
+        let mut squarelist = SquareList::new();
         for i in 0..=3u8 {
-            piecelist.add(Square::from_square(i));
+            squarelist.add(Square::from_square(i));
         }
 
-        assert!(piecelist.contains(Square::from_square(2)));
-        assert!(!piecelist.contains(Square::from_square(9)));
+        assert!(squarelist.contains(Square::from_square(2)));
+        assert!(!squarelist.contains(Square::from_square(9)));
     }
 }

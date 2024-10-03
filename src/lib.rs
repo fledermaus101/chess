@@ -1,9 +1,9 @@
 #![feature(iter_collect_into)]
 #![feature(const_option)]
 #![feature(array_chunks)]
-pub mod piecelist;
+pub mod squarelist;
 
-use crate::piecelist::SquareList;
+use crate::squarelist::SquareList;
 use std::{
     fmt::Debug,
     fmt::Display,

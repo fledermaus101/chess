@@ -334,12 +334,12 @@ impl Square {
 #[allow(unused)]
 impl Board {
     #[must_use]
-    pub const fn has_kingside_castle_right(&self) -> bool {
+    pub const fn can_kingside_castle(&self) -> bool {
         self.castling_rights[!self.side_to_move as usize * 2]
     }
 
     #[must_use]
-    pub const fn has_queenside_castle_right(&self) -> bool {
+    pub const fn can_queenside_castle(&self) -> bool {
         self.castling_rights[1 + !self.side_to_move as usize * 2]
     }
 
@@ -519,7 +519,7 @@ impl Board {
             self.get_bitboard_all_pieces().reverse_bits()
         };
 
-        if self.has_kingside_castle_right() && 0 == bitboard & 0b0000_0110 {
+        if self.can_kingside_castle() && 0 == bitboard & 0b0000_0110 {
             king_moves.push(Move {
                 from: square,
                 to: square.add_file(2),
@@ -529,7 +529,7 @@ impl Board {
                 is_castling: CastleMove::KingSide,
             });
         }
-        if self.has_queenside_castle_right() && 0 == bitboard & 0b0000_0111 {
+        if self.can_queenside_castle() && 0 == bitboard & 0b0000_0111 {
             king_moves.push(Move {
                 from: square,
                 to: square.add_file(-2),

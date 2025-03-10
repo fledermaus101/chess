@@ -584,19 +584,17 @@ impl Board {
         // remove moves made by the king to squares attacked by opponent
         pseudo.retain(|x| !(other_pseudo.contains(&x.to) && x.piece_type == PieceType::King));
 
-        let king_square = self
-            .get_pieces_of_color(self.side_to_move)
-            .into_iter()
-            .find(|piece| piece.piece_type == PieceType::King)
-            .expect("A board should always contain a king")
-            .square();
-        #[cfg(test)]
-        println!("King is on {king_square}");
-
         // remove moves that put our king into check
         pseudo.retain(|x| {
             let mut copy = *self;
             copy.make_move(*x);
+
+            let king_square = copy
+                .get_pieces_of_color(!copy.side_to_move)
+                .into_iter()
+                .find(|piece| piece.piece_type == PieceType::King)
+                .expect("A board should always contain a king")
+                .square();
 
             !copy
                 .legal_moves_pseudo()
@@ -1798,5 +1796,52 @@ mod tests {
         });
 
         assert!(board.is_occupied_by_friendly(square));
+    }
+
+    #[test]
+    fn legal_moves_under_check() {
+        // rank
+        // |
+        // 7 8 0 0 0 r r k 0 0
+        // 6 7 0 0 0 x x 0 0 0
+        // 5 6 0 B 0 x x 0 0 0
+        // 4 5 0 0 0 x x 0 0 0
+        // 3 4 0 0 X X x 0 0 0
+        // 2 3 0 0 X K x 0 0 0
+        // 1 2 0 0 X 0 x 0 0 0
+        // 0 1 0 0 0 0 x 0 0 0
+        //     a b c d e f g h - file
+        //     0 1 2 3 4 5 6 7
+        let board = Board::try_from("3rrk2/8/1B6/8/8/3K4/8/8 w - - 0 1")
+            .expect("badly built test. FEN string could not be parsed.");
+        let mut actual = board.legal_moves();
+        actual.sort_by(sort_moves);
+
+        let expected_king = [(2, 1), (2, 2), (2, 3)].map(|(file, rank)| Move {
+            from: Square::from_lateral(3, 2),
+            to: Square::from_lateral(file, rank),
+            piece_type: PieceType::King,
+            is_white: true,
+            promotion_piece: None,
+            is_castling: CastleMove::None,
+        });
+
+        let expected_bishop = [(3, 3), (3, 7)].map(|(file, rank)| Move {
+            from: Square::from_lateral(1, 5),
+            to: Square::from_lateral(file, rank),
+            piece_type: PieceType::Bishop,
+            is_white: true,
+            promotion_piece: None,
+            is_castling: CastleMove::None,
+        });
+        let mut expected: Vec<Move> = expected_king
+            .into_iter()
+            .chain(expected_bishop.into_iter())
+            .collect();
+        expected.sort_by(sort_moves);
+
+        print_moves(&board, &actual);
+        print_moves(&board, &expected);
+        assert_eq!(actual, expected);
     }
 }

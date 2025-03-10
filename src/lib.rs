@@ -328,6 +328,11 @@ impl Square {
             u8::try_from(rank - 1).expect("Above check should make this impossible"),
         ))
     }
+
+    #[must_use]
+    pub const fn rank_flip(self) -> Self {
+        Self::from_lateral(self.file(), 7 - self.rank())
+    }
 }
 
 #[allow(unused)]
@@ -621,10 +626,53 @@ impl Board {
     }
 
     fn make_move(&mut self, mv: Move) {
-        //TODO: half move clock (captures, castling)
+        //DONE? (testing?): half move clock (captures, castling)
         //TODO: castling rights
         //TODO: castling in general (rook must be moved)
         //TODO: updating en passant + pawn taking the piece
+
+        self.half_moves += 1;
+        //TODO: reset half_moves if castling rights are lost
+        if (0 != self.get_bitboard_of_color(!self.side_to_move) & (1 << mv.to.0))
+            || mv.piece_type == PieceType::Pawn
+        {
+            self.half_moves = 0;
+        }
+
+        if mv.piece_type == PieceType::King {
+            if self.castling_rights[usize::from(!self.side_to_move) * 2]
+                || self.castling_rights[1 + usize::from(!self.side_to_move) * 2]
+            {
+                self.half_moves = 0;
+            }
+            self.castling_rights[usize::from(!self.side_to_move) * 2] = false;
+            self.castling_rights[1 + usize::from(!self.side_to_move) * 2] = false;
+            match mv.is_castling {
+                CastleMove::KingSide => todo!(),
+                CastleMove::QueenSide => todo!(),
+                CastleMove::None => (),
+            }
+        }
+
+        if mv.piece_type == PieceType::Rook {
+            if mv.from.rank_flip() == Square::from_lateral(0, 0)
+                && self.castling_rights[1 + usize::from(!self.side_to_move) * 2]
+            {
+                self.castling_rights[1 + usize::from(!self.side_to_move) * 2] = false;
+            }
+
+            if mv.from.rank_flip() == Square::from_lateral(7, 0)
+                && self.castling_rights[usize::from(!self.side_to_move) * 2]
+            {
+                self.castling_rights[usize::from(!self.side_to_move) * 2] = false;
+            }
+        }
+
+        // en passant
+        self.en_passant_square = None;
+        if mv.piece_type == PieceType::Pawn && mv.from.rank().abs_diff(mv.to.rank()) == 2 {
+            self.en_passant_square = Some(mv.from.add_rank(self.side_multiplier()));
+        }
         self.clear_square(mv.from);
         self.clear_square(mv.to);
         self.set_square(mv.piece());

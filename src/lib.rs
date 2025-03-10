@@ -1,5 +1,4 @@
 #![feature(iter_collect_into)]
-#![feature(const_option)]
 #![feature(array_chunks)]
 pub mod squarelist;
 
@@ -436,13 +435,13 @@ impl Board {
         let start_rank = if self.side_to_move { 1 } else { 6 };
         // single push
         let square_push_single = start_square.add_rank(self.side_multiplier());
-        if 0 == self.get_bitboard_all_pieces() & 1 << square_push_single.0 {
+        if 0 == self.get_bitboard_all_pieces() & (1 << square_push_single.0) {
             available_moves.push(square_push_single);
 
             // double push pawns
             let square_push_double = start_square.add_rank(2 * self.side_multiplier());
             if start_square.rank() == start_rank
-                && 0 == self.get_bitboard_all_pieces() & 1 << square_push_double.0
+                && 0 == self.get_bitboard_all_pieces() & (1 << square_push_double.0)
             {
                 available_moves.push(square_push_double);
             }
@@ -454,22 +453,21 @@ impl Board {
         for offset in [-1, 1] {
             // diagonal capture
             if let Ok(to_square) = start_square.try_add_tuple((offset, self.side_multiplier())) {
-                if (1 << to_square.0 & mask_en_passant) != 0 {
+                if ((1 << to_square.0) & mask_en_passant) != 0 {
                     available_moves.push(to_square);
                 }
             }
         }
 
         let promotion_pieces = if start_square.rank() == 7 - start_rank {
-            [
+            &[
                 Some(PieceType::Knight),
                 Some(PieceType::Bishop),
                 Some(PieceType::Rook),
                 Some(PieceType::Queen),
-            ]
-            .as_slice()
+            ][..]
         } else {
-            [None].as_slice()
+            &[None][..]
         };
 
         for mv in available_moves {

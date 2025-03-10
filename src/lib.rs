@@ -267,27 +267,6 @@ impl Square {
         }
     }
 
-    // pub fn try_add_tuple_non_const(
-    //     self,
-    //     rhs: (i8, i8),
-    // ) -> Result<Self, LateralPositionToSquareConversionError> {
-    //     let (lhs_file, lhs_rank) = self.to_tuple();
-    //     let (rhs_file, rhs_rank) = rhs;
-
-    //     let file = lhs_file.checked_add_signed(rhs_file).ok_or_else(|| {
-    //         LateralPositionToSquareConversionError::FileNegative(
-    //             rhs_file.saturating_add_unsigned(lhs_file),
-    //         )
-    //     })?;
-    //     let rank = lhs_rank.checked_add_signed(rhs_rank).ok_or_else(|| {
-    //         LateralPositionToSquareConversionError::RankNegative(
-    //             rhs_rank.saturating_add_unsigned(lhs_rank),
-    //         )
-    //     })?;
-
-    //     Self::try_from_lateral(file, rank)
-    // }
-
     /// Returns a square given a square name
     ///
     /// # Panics

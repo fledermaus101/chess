@@ -1229,11 +1229,11 @@ mod tests {
     #[test]
     #[ignore] // makes testing slow
     fn perft_starting_position() {
-        let mut board = Board::try_from("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+        let board = Board::try_from("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
             .expect("Should be valid");
         let correct = [1, 20, 400, 8902, 197_281];
         for (depth, n_nodes) in correct.into_iter().enumerate() {
-            assert_eq!(n_nodes, perft(&mut board, depth));
+            assert_eq!(n_nodes, perft(&board, depth));
         }
     }
 
@@ -1248,7 +1248,7 @@ mod tests {
         for m in moves {
             let mut board_tmp = *board;
             board_tmp.make_move(m);
-            ncount += perft(&mut board_tmp, depth - 1);
+            ncount += perft(&board_tmp, depth - 1);
         }
         ncount
     }

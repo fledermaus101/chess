@@ -3,7 +3,10 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use crate::{Piece, PieceType, Square};
+use crate::{
+    piece::{Piece, PieceType},
+    square::Square,
+};
 
 pub const SQUARE_LIST_SIZE: usize = 10;
 
@@ -123,11 +126,7 @@ impl Iterator for PieceListIterator {
         }
         let val = self.list[self.l_index];
         self.l_index += 1;
-        Some(Piece {
-            square: val,
-            piece_type: self.piece_type,
-            is_white: self.is_white,
-        })
+        Some(Piece::new(val, self.piece_type, self.is_white))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -143,11 +142,7 @@ impl DoubleEndedIterator for PieceListIterator {
         }
         self.r_index -= 1;
         let val = self.list[self.r_index];
-        Some(Piece {
-            square: val,
-            piece_type: self.piece_type,
-            is_white: self.is_white,
-        })
+        Some(Piece::new(val, self.piece_type, self.is_white))
     }
 }
 

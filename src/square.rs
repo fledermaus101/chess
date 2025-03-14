@@ -141,7 +141,7 @@ impl Square {
     }
 
     #[must_use]
-    pub const fn square(self) -> u8 {
+    pub const fn index(self) -> u8 {
         self.0
     }
 

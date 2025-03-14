@@ -49,7 +49,7 @@ impl Board {
         while let Ok(sq) = current_square.try_add_tuple((offset_file, offset_rank)) {
             current_square = sq;
 
-            let mask = 1 << current_square.square();
+            let mask = 1 << current_square.index();
             if 0 != self.get_bitboard_of_color(self.side_to_move) & mask {
                 break;
             }
@@ -133,13 +133,13 @@ impl Board {
         let start_rank = if self.side_to_move { 1 } else { 6 };
         // single push
         let square_push_single = start_square.add_rank(self.side_multiplier());
-        if 0 == self.get_bitboard_all_pieces() & (1 << square_push_single.square()) {
+        if 0 == self.get_bitboard_all_pieces() & (1 << square_push_single.index()) {
             available_moves.push(square_push_single);
 
             // double push pawns
             let square_push_double = start_square.add_rank(2 * self.side_multiplier());
             if start_square.rank() == start_rank
-                && 0 == self.get_bitboard_all_pieces() & (1 << square_push_double.square())
+                && 0 == self.get_bitboard_all_pieces() & (1 << square_push_double.index())
             {
                 available_moves.push(square_push_double);
             }
@@ -147,11 +147,11 @@ impl Board {
 
         let mask_en_passant = self.get_bitboard_of_color(!self.side_to_move)
             // add the en_passant_square as a valid capture target
-            | self.en_passant_square.map_or(0, |sq| 1 << sq.square());
+            | self.en_passant_square.map_or(0, |sq| 1 << sq.index());
         for offset in [-1, 1] {
             // diagonal capture
             if let Ok(to_square) = start_square.try_add_tuple((offset, self.side_multiplier())) {
-                if ((1 << to_square.square()) & mask_en_passant) != 0 {
+                if ((1 << to_square.index()) & mask_en_passant) != 0 {
                     available_moves.push(to_square);
                 }
             }
@@ -332,7 +332,7 @@ impl Board {
 
         self.half_moves += 1;
         //TODO: reset half_moves if castling rights are lost
-        if (0 != self.get_bitboard_of_color(!self.side_to_move) & (1 << mv.to().square()))
+        if (0 != self.get_bitboard_of_color(!self.side_to_move) & (1 << mv.to().index()))
             || mv.piece_type() == PieceType::Pawn
         {
             self.half_moves = 0;
@@ -389,26 +389,26 @@ impl Board {
 
     #[must_use]
     const fn is_occupied_by_friendly(&self, square: Square) -> bool {
-        0 != self.get_bitboard_of_color(self.side_to_move) & (1 << square.square())
+        0 != self.get_bitboard_of_color(self.side_to_move) & (1 << square.index())
     }
 
     fn set_square(&mut self, piece: Piece) {
         let index = convert_piece_to_index(piece.piece_type(), piece.is_white());
-        self.bitboards[index] |= 1 << piece.square().square();
+        self.bitboards[index] |= 1 << piece.square().index();
 
         self.squarelists[index].add(piece.square());
     }
 
     fn clear_square_of_piece(&mut self, piece: Piece) {
         let index = convert_piece_to_index(piece.piece_type(), piece.is_white());
-        self.bitboards[index] &= !(1 << piece.square().square());
+        self.bitboards[index] &= !(1 << piece.square().index());
 
         self.squarelists[index].remove(piece.square());
     }
 
     fn clear_square(&mut self, square: Square) {
         for bitboard in &mut self.bitboards {
-            *bitboard &= !(1 << square.square());
+            *bitboard &= !(1 << square.index());
         }
         for squarelist in &mut self.squarelists {
             squarelist.remove(square);
@@ -1144,7 +1144,7 @@ mod tests {
         for m in moves {
             #[allow(clippy::match_bool)]
             let mut rgb = RandomColor::new()
-                .seed(u32::from(m.from().square()))
+                .seed(u32::from(m.from().index()))
                 .luminosity(match m.is_white() {
                     true => Luminosity::Light,
                     false => Luminosity::Dark,
@@ -1154,7 +1154,7 @@ mod tests {
             // average the colors column
             // this is wildly unproportional if there are more than 2 colors
             if let Some(other) =
-                drawing_board[m.to().square() as usize].and_then(|sq_drawing| sq_drawing.background)
+                drawing_board[m.to().index() as usize].and_then(|sq_drawing| sq_drawing.background)
             {
                 rgb = [(rgb[0], other[0]), (rgb[1], other[1]), (rgb[2], other[2])]
                     .map(|(a, b)| a / 2 + b / 2);
@@ -1166,16 +1166,16 @@ mod tests {
                 ..Default::default()
             };
 
-            drawing_board[m.to().square() as usize] = Some(square_drawing);
+            drawing_board[m.to().index() as usize] = Some(square_drawing);
         }
 
         for piece in piece_board.get_all_pieces() {
             let mut square_drawing =
-                drawing_board[piece.square().square() as usize].unwrap_or_default();
+                drawing_board[piece.square().index() as usize].unwrap_or_default();
 
             #[allow(clippy::match_bool)]
             let rgb = RandomColor::new()
-                .seed(u32::from(piece.square().square()))
+                .seed(u32::from(piece.square().index()))
                 .luminosity(match piece.is_white() {
                     true => Luminosity::Light,
                     false => Luminosity::Dark,
@@ -1188,7 +1188,7 @@ mod tests {
                 ..square_drawing
             };
 
-            drawing_board[piece.square().square() as usize] = Some(square_drawing);
+            drawing_board[piece.square().index() as usize] = Some(square_drawing);
         }
         let drawing_board = drawing_board.map(Option::unwrap_or_default);
 

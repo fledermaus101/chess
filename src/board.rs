@@ -1043,7 +1043,7 @@ mod tests {
                 CastleMove::None,
             ),
         ];
-        test_board("1rk5/8/8/8/8/2P5/8/K7 w - - 0 1", expected.to_vec())
+        test_board("1rk5/8/8/8/8/2P5/8/K7 w - - 0 1", expected.to_vec());
     }
 
     #[test]
@@ -1078,7 +1078,7 @@ mod tests {
                 CastleMove::None,
             ),
         ];
-        test_board("1rk5/8/8/8/3b4/2P5/8/K7 w - - 0 1", expected.to_vec())
+        test_board("1rk5/8/8/8/3b4/2P5/8/K7 w - - 0 1", expected.to_vec());
     }
 
     #[test]
@@ -1231,13 +1231,13 @@ mod tests {
     fn perft_starting_position() {
         let mut board = Board::try_from("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
             .expect("Should be valid");
-        let correct = [1, 20, 400, 8902, 197281];
+        let correct = [1, 20, 400, 8902, 197_281];
         for (depth, n_nodes) in correct.into_iter().enumerate() {
             assert_eq!(n_nodes, perft(&mut board, depth));
         }
     }
 
-    fn perft(board: &mut Board, depth: usize) -> u32 {
+    fn perft(board: &Board, depth: usize) -> u32 {
         if depth == 0 {
             return 1;
         }
@@ -1246,7 +1246,7 @@ mod tests {
         let moves = board.legal_moves();
         print_moves(board, &moves);
         for m in moves {
-            let mut board_tmp = board.clone();
+            let mut board_tmp = *board;
             board_tmp.make_move(m);
             ncount += perft(&mut board_tmp, depth - 1);
         }
@@ -1297,10 +1297,7 @@ mod tests {
                 CastleMove::None,
             )
         });
-        let expected: Vec<Move> = expected_king
-            .into_iter()
-            .chain(expected_bishop.into_iter())
-            .collect();
+        let expected: Vec<Move> = expected_king.into_iter().chain(expected_bishop).collect();
 
         test_board("3rrk2/8/1B6/8/8/3K4/8/8 w - - 0 1", expected);
     }

@@ -40,27 +40,27 @@ impl Move {
         }
     }
 
-    pub fn from(&self) -> Square {
+    #[must_use] pub const fn from(&self) -> Square {
         self.from
     }
 
-    pub fn to(&self) -> Square {
+    #[must_use] pub const fn to(&self) -> Square {
         self.to
     }
 
-    pub fn piece_type(&self) -> PieceType {
+    #[must_use] pub const fn piece_type(&self) -> PieceType {
         self.piece_type
     }
 
-    pub fn is_white(&self) -> bool {
+    #[must_use] pub const fn is_white(&self) -> bool {
         self.is_white
     }
 
-    pub fn promotion_piece(&self) -> Option<PieceType> {
+    #[must_use] pub const fn promotion_piece(&self) -> Option<PieceType> {
         self.promotion_piece
     }
 
-    pub fn is_castling(&self) -> CastleMove {
+    #[must_use] pub const fn is_castling(&self) -> CastleMove {
         self.is_castling
     }
 }
